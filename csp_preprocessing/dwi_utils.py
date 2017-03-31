@@ -295,8 +295,11 @@ def create_md_mask(fn_md, fn_out=None, thr_min=0.1, thr_max=1.1):
 
             #arg_max = np.argmax(lbl_count) + 1
             #dat_mask[ lbl[0] != arg_max ] = 0
-            arg_min = np.argmin(lbl_dist) + 1
-            dat_mask[ lbl[0] != arg_min ] = 0
+            if len(lbl_dist) > 0:
+                arg_min = np.argmin(lbl_dist) + 1
+                dat_mask[ lbl[0] != arg_min ] = 0
+            else:
+                dat_mask[:] = 0
 
         dat_slice[dat_mask == 0]= 0
         dat_mask_volume[:,:,z] = dat_mask

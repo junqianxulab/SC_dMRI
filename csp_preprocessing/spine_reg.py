@@ -9,11 +9,65 @@ import time
 #from dwi_utils import run_command
 import dwi_utils
 import shutil
+import nibabel as nib
+import numpy as np
 
-run_command = dwi_utils.run_command
+#run_command = dwi_utils.run_command
+def run_command_with_prefix(cmd, print_cmd = True, prefix="export FSLOUTPUTTYPE='NIFTI' ; "):
+    if print_cmd is True:
+        print '>> %s' % cmd
+    elif type(print_cmd) == type('') and print_cmd != '':
+        dwi_utils.append_log(print_cmd, cmd)
+
+    p = subprocess.call(prefix + cmd, shell=True)
+    return p
+
+run_command = run_command_with_prefix
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 from parameter import Parameter_reg2d
+
+def split_slice_wo_fsl(param, filename, basename):
+    run_command('mkdir -p %s' % param.tempdir)
+    img = nib.load(filename)
+    shape = list(img.shape)
+    dat = img.get_data()
+    if len(shape) > 3:
+        is_4d = True
+    else:
+        is_4d = False
+
+    #run_command('fslslice %s %s' % (filename, os.path.join(param.tempdir, basename)))
+    for z in range(shape[2]):
+        if is_4d:
+            img_out = nib.Nifti1Image(dat[:,:,z,:].reshape(shape[:2]+[1]+[shape[3]]), img.affine, img.header)
+        else:
+            img_out = nib.Nifti1Image(dat[:,:,z], img.affine, img.header)
+        nib.save(img_out, os.path.join(param.tempdir, '%s_%04d.nii' % (basename, z)))
+
+
+    if param.multiband > 1:
+        if is_4d:
+            dat_sub = np.empty(shape[:2] + [param.multiband] + [shape[3]])
+        else:
+            dat_sub = np.empty(shape[:2] + [param.multiband])
+        for i in range(param.ngroup):
+            dir_slice = param.get_dir_slice(i)
+            run_command('mkdir -p %s' % dir_slice)
+            slclst = [ '%s_%s' % ( os.path.join(param.tempdir, basename), param.get_merge_slice_number(i+param.ngroup*j, merged=False)) for j in range(param.multiband) ]
+            #run_command('fslmerge -z %s_%s %s' % (os.path.join(dir_slice, basename), param.get_merge_slice_number(i), ' '.join(slclst)))
+            for j in range(param.multiband):
+                dat_sub[:,:,j] = dat[:,:,i+param.ngroup*j]
+            img_out = nib.Nifti1Image(dat_sub, img.affine, img.header)
+            nib.save(img_out, '%s_%s.nii' % (os.path.join(dir_slice, basename), param.get_merge_slice_number(i)))
+
+    else:
+        for i in range(param.ngroup):
+            dir_slice = param.get_dir_slice(i)
+            run_command('mkdir -p %s' % dir_slice)
+            run_command('mv %s_%s.nii %s' % (os.path.join(param.tempdir, basename), param.get_merge_slice_number(i, merged=False), dir_slice))
+
+    return img
 
 def split_slice(param, filename, basename):
     run_command('mkdir -p %s' % param.tempdir)
@@ -26,9 +80,23 @@ def split_slice(param, filename, basename):
             slclst = [ '%s_%s' % ( os.path.join(param.tempdir, basename), param.get_merge_slice_number(i+param.ngroup*j, merged=False)) for j in range(param.multiband) ]
             run_command('fslmerge -z %s_%s %s' % (os.path.join(dir_slice, basename), param.get_merge_slice_number(i), ' '.join(slclst)))
         else:
-            run_command('mv %s_%s.nii.gz %s' % (os.path.join(param.tempdir, basename), param.get_merge_slice_number(i, merged=False), dir_slice))
+            run_command('mv %s_%s.nii %s' % (os.path.join(param.tempdir, basename), param.get_merge_slice_number(i, merged=False), dir_slice))
+            #run_command('mv %s_%s.nii.gz %s' % (os.path.join(param.tempdir, basename), param.get_merge_slice_number(i, merged=False), dir_slice))
 
 def extract_frame(param, slc):
+    '''
+    extract_frame(param, slc)
+    '''
+    dir_slice = param.get_dir_slice(slc)
+    img = nib.load('%s.nii' % param.get_fn('all', slc=slc, xenc=False))
+    shape = list(img.shape)
+    dat = img.get_data().reshape(shape[:2]+shape[-1:])
+    for k in param.allframes:
+        #run_command('fslroi %s %s %s 1' % (param.get_fn('all', slc=slc, xenc=False), param.get_fn(slc=slc, frame=k, xenc=False), k))
+        img_out = nib.Nifti1Image(dat[:,:,k], img.affine, img.header)
+        nib.save(img_out, '%s.nii' % param.get_fn(slc=slc, frame=k, xenc=False))
+
+def extract_frame_fsl(param, slc):
     '''
     extract_frame(param, slc)
     '''
@@ -59,7 +127,8 @@ def merge_slice(param, mode, seg=None):
             basename = '%s_mbgrp_%04d' % (os.path.join(param.tempdir, param.bn_img), i)
             run_command('fslslice %s %s' % (filename, basename))
             for j in range(param.multiband):
-                slice_groups[j].append('%s_slice_%04d.nii.gz' % (basename, j))
+                slice_groups[j].append('%s_slice_%04d.nii' % (basename, j))
+                #slice_groups[j].append('%s_slice_%04d.nii.gz' % (basename, j))
         slice_list = []
         for a_list in slice_groups:
             slice_list += a_list
@@ -80,7 +149,8 @@ def init(param, mode, slc, seg=None):
 
     for k in alist:
         mat = param.get_fn_mat(mode, frame=k, seg=seg, slc=slc) + '.mat'
-        cmd = 'cp -f %s.nii.gz %s.nii.gz' % (param.get_fn(mode, k, slc=slc, xenc=False), param.get_fn(mode, k, slc=slc, xenc=True))
+        cmd = 'cp -f %s.nii %s.nii' % (param.get_fn(mode, k, slc=slc, xenc=False), param.get_fn(mode, k, slc=slc, xenc=True))
+        #cmd = 'cp -f %s.nii.gz %s.nii.gz' % (param.get_fn(mode, k, slc=slc, xenc=False), param.get_fn(mode, k, slc=slc, xenc=True))
         run_command(cmd)
         run_command('cp -f %s %s' % (param.identmat, mat))
 
@@ -215,12 +285,14 @@ def apply_xfm(param, mode, slc=None, seg=None):
     '''
     alist = param.get_frame_list(mode, seg)
     #mean_name = param.get_fn_mean(mode, seg, slc=slc)
-    seggeommean = param.get_fn_mean('segmean', slc=slc)
+    #seggeommean = param.get_fn_mean('segmean', slc=slc)
+    b0mean = param.get_fn_mean('b0', slc=slc)
 
     for k in alist:
         matAtoD = param.get_fn_mat('%s_concate' % mode, frame=k, slc=slc) + '.mat'
         run_command('flirt -in %s -ref %s -applyxfm -init %s -out %s -interp sinc' %
-                (param.get_fn(mode, frame=k, slc=slc, xenc=False), seggeommean, matAtoD, param.get_fn(mode, frame=k, slc=slc)))
+                (param.get_fn(mode, frame=k, slc=slc, xenc=False), b0mean, matAtoD, param.get_fn(mode, frame=k, slc=slc)))
+        #       (param.get_fn(mode, frame=k, slc=slc, xenc=False), seggeommean, matAtoD, param.get_fn(mode, frame=k, slc=slc)))
 
 def get_xy_trans(param, mode, slc=None, seg=None):
     '''
@@ -230,6 +302,8 @@ def get_xy_trans(param, mode, slc=None, seg=None):
 
     alist = param.get_frame_list(mode, seg)
     xy_trans = [0.0 for i in range(len(alist))]
+    x_trans = [0.0 for i in range(len(alist))]
+    y_trans = [0.0 for i in range(len(alist))]
 
     # b0
     mode = 'b0'
@@ -239,6 +313,8 @@ def get_xy_trans(param, mode, slc=None, seg=None):
         with open(matAtoD) as fin:
             x = float(fin.readline().strip().split()[-1])
             y = float(fin.readline().strip().split()[-1])
+            x_trans[k] = x
+            y_trans[k] = y
             xy_trans[k] = x*x+y*y
 
     mode = 'segdwi'
@@ -249,9 +325,11 @@ def get_xy_trans(param, mode, slc=None, seg=None):
             with open(matAtoD) as fin:
                 x = float(fin.readline().strip().split()[-1])
                 y = float(fin.readline().strip().split()[-1])
+                x_trans[k] = x
+                y_trans[k] = y
                 xy_trans[k] = x*x+y*y
 
-    return xy_trans
+    return xy_trans, x_trans, y_trans
 
 def align(param, mode, slc, seg=None):
     '''
@@ -275,6 +353,8 @@ def run_applywarp(param):
 
     print '## Merge frames'
     merge_slice(param, 'all')
+    dwi_utils.gzip(param.get_fn('all') + '.nii')
+
     if param.is_param_object:
         fn_out = param.get_fn('all')
         shutil.copy(fn_out + '.nii.gz', '../%s' % fn_out)
@@ -284,7 +364,7 @@ def run_registration(param):
     #
     print '## Extract slices'
     split_slice(param, param.fn_mas, param.bn_mas)
-    split_slice(param, param.fn_img, param.bn_img)
+    img = split_slice(param, param.fn_img, param.bn_img)
 
     for slc in range(param.ngroup):
         # extract frames
@@ -315,9 +395,10 @@ def run_registration(param):
   
     print '## Merge frames'
     merge_slice(param, 'all')
+    dwi_utils.gzip(param.get_fn('all') + '.nii')
 
     # remove intermediate files
-    #run_command('rm -rf %s' % param.tempdir)
+    run_command('rm -rf %s' % param.tempdir)
 
     # check the quality of registration by playing a movie in fsl
     #run_command('fslview %s_xenc.nii.gz' % param.p)
@@ -332,16 +413,16 @@ def generate_xy_trans(param, obj_return_value=None):
     xy_trans_group = []
     fn_out = param.get_fn_xy_trans()
     fout = open(fn_out, 'w')
-    fout.write('%s,%s,%s\n' % ('mbgroup', 'frame', 'distance'))
+    fout.write('%s,%s,%s,%s,%s\n' % ('mbgroup', 'frame', 'x_trans', 'y_trans', 'distance'))
     print 'Translation > 2.0 mm:'
-    print '%s\t%s\t%s' % ('mbgroup', 'frame', 'distance')
+    print '%s\t%s\t%s\t%s\t%s' % ('mbgroup', 'frame', 'x_trans', 'y_trans', 'distance')
     for slc in range(param.ngroup):
-        xy_trans = get_xy_trans(param, 'all', slc=slc)
+        xy_trans, x_trans, y_trans = get_xy_trans(param, 'all', slc=slc)
         xy_trans_group.append(xy_trans)
         for frame in range(len(xy_trans)):
-            fout.write('%s,%s,%s\n' % (slc, frame, xy_trans[frame]))
+            fout.write('%s,%s,%s,%s,%s\n' % (slc, frame, x_trans[frame], y_trans[frame], xy_trans[frame]))
             if xy_trans[frame] > 2.0:
-                print '%s\t%s\t%s' % (slc, frame, xy_trans[frame])
+                print '%s\t%s\t%s\t%s\t%s' % (slc, frame, x_trans[frame], y_trans[frame], xy_trans[frame])
     fout.close()
 
     if obj_return_value is not None:
@@ -353,20 +434,72 @@ def generate_xy_trans(param, obj_return_value=None):
 
 def set_print_cmd(print_cmd):
     global run_command
-    run_command = lambda x:dwi_utils.run_command(x, print_cmd=print_cmd)
+    run_command = lambda x:run_command_with_prefix(x, print_cmd=print_cmd)
+
+def generate_xy_trans_lazy(base_directory, fn_out='xy_reg_distance.csv'):
+    import glob
+    lst = glob.glob(os.path.join(base_directory, '*_*', '*_seggeom_xenc.mat'))
+
+    def extract_mbgroup_slice(filename):
+        group_dn, fn = filename.split(os.sep)[-2:]
+        group = group_dn.split('_')[1]
+
+        ind_to = fn.rfind('_to_')
+        ind_frame = fn[:ind_to].rfind('_frame_')
+        frame = fn[ind_frame+7:ind_to]
+        try:
+            group = int(group)
+            frame = int(frame)
+        except:
+            return None
+        return (group, frame, filename),
+    
+    lst_g_f_fn = [ ext for filename in lst for ext in extract_mbgroup_slice(filename) if ext is not None ]
+    lst_g_f_fn.sort()
+
+    with open(fn_out, 'w') as fout:
+        fout.write('%s,%s,%s,%s,%s\n' % ('mbgroup', 'frame', 'x_trans', 'y_trans', 'distance'))
+        print 'Translation > 2.0 mm:'
+        print '%s\t%s\t%s\t%s\t%s' % ('mbgroup', 'frame', 'x_trans', 'y_trans', 'distance')
+        for (group, frame, filename) in lst_g_f_fn:
+            with open(filename) as fin:
+                x = float(fin.readline().strip().split()[-1])
+                y = float(fin.readline().strip().split()[-1])
+                x_trans = x
+                y_trans = y
+                xy_trans = x*x+y*y
+
+            fout.write('%s,%s,%s,%s,%s\n' % (group, frame, x_trans, y_trans, xy_trans))
+            if xy_trans[frame] > 2.0:
+                print '%s\t%s\t%s\t%s\t%s' % (group, frame, x_trans, y_trans, xy_trans)
+
+
+def usage():
+    sys.stderr.write('Usage: %s filename.params\n' % os.path.basename(sys.argv[0]))
+    sys.stderr.write('Usage: %s --xytrans base_directory [output_filename=xy_reg_distance.csv]\n' % os.path.basename(sys.argv[0]))
 
 if __name__ == '__main__':
     # start
-    print '## Load a param file'
-    if len(sys.argv) > 1:
-        filename = sys.argv[1]
-    else:
-        print 'Usage: %s filename.params' % sys.argv[0]
+    if len(sys.argv) < 2:
+        usage()
         sys.exit(-1)
+    
+    if sys.argv[1][:2] == '--':
+        if sys.argv[1] == '--xytrans':
+            if len(sys.argv) > 3:
+                generate_xy_trans_lazy(sys.argv[2], sys.argv[3])
+            elif len(sys.argv) > 2:
+                generate_xy_trans_lazy(sys.argv[2])
+            else:
+                usage()
+                sys.exit(-1)
 
-    param = Parameter_reg2d(paramfile=filename)
-    #param = Param('CSPV032_dwi1_qa.params')
-    #param.set_multiband(2)
-    run_registration(param)
+    else:
+        filename = sys.argv[1]
+        print '## Load a param file'
+        param = Parameter_reg2d(paramfile=filename)
+        #param = Param('CSPV032_dwi1_qa.params')
+        #param.set_multiband(2)
+        run_registration(param)
 
 

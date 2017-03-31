@@ -5,8 +5,9 @@ from ttk import Frame, Button, Style, Label, Entry, Checkbutton, Radiobutton
 import tkFileDialog
 import os
 import shutil
-from dwi_utils import filename_wo_ext, extname, create_merge, create_acqparams, create_index, abspath_to_relpath
+from dwi_utils import filename_wo_ext, extname, create_merge, create_acqparams, create_index, abspath_to_relpath, run_command
 import parameter
+import nibabel as nib
 
 COPY_AS_SYMBOLIC_LINK = True
 
@@ -441,7 +442,16 @@ class PrepareDWI(Frame):
         # copy Nifti1 files
         filenames_b0 = self.lst_dwi.get_b0_filenames()
         for a_pair in filenames_b0:
-            if COPY_AS_SYMBOLIC_LINK:
+            # test # frames in b0 image
+            img = nib.load(a_pair[0])
+            if len(img.shape) < 4 or img.shape[3] > 1:
+                # extract first frame
+                a_pair[1] = os.path.join(dir_out, a_pair[1])
+                if os.path.lexists(a_pair[1]):
+                    os.remove(a_pair[1])
+                cmd = 'fslroi %s %s 0 1' % (a_pair[0], a_pair[1])
+                run_command(cmd)
+            elif COPY_AS_SYMBOLIC_LINK:
                 rel_path = abspath_to_relpath(dir_out, os.path.abspath(os.path.dirname(a_pair[0])))
                 if os.path.lexists(a_pair[1]):
                     os.remove(a_pair[1])

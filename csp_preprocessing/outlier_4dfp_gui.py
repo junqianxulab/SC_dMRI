@@ -277,18 +277,19 @@ class Outlier4dfp(Frame):
 
         Label(self.frame_top, text='Z = ').pack(side=LEFT)
         self.spin_z = Spinbox(self.frame_top, from_=0, to=self.shape[2]-1, increment=1, command=self.change_z)
-        self.spin_z.pack()
+        self.spin_z.pack(side=LEFT)
         self.make_checkbox(self.frame_bottom)
 
-        button_reset = Button(self.frame_top, text='Reset', command=self.reset).pack()
-
-        Label(self.frame_top, text='CSV').pack()
+        Label(self.frame_top, text='   CSV').pack(side=LEFT)
         self.txt_filename_csv = Entry(self.frame_top)
-        self.txt_filename_csv.pack()
+        self.txt_filename_csv.pack(side=LEFT)
         self.button_read = Button(self.frame_top, text='Read', command=self.run_read)
-        self.button_read.pack()
+        self.button_read.pack(side=LEFT)
         self.button_save = Button(self.frame_top, text='Save', command=self.run_save)
-        self.button_save.pack()
+        self.button_save.pack(side=LEFT)
+
+        Label(self.frame_top, text='   ').pack(side=LEFT)
+        button_reset = Button(self.frame_top, text='Reset', command=self.reset).pack(side=LEFT)
 
         self.frame_top.pack(side=TOP)
         self.frame_graph.get_tk_widget().pack(fill=BOTH, expand=TRUE)

@@ -16,12 +16,19 @@ import spine_reg
 #filenameDialog_text = prepare_dwi_gui.filenameDialog_text
 #dirnameDialog_text = prepare_dwi_gui.dirnameDialog_text
 
+def append_text(fn, text, header=''):
+    with open(fn, 'a') as fout:
+        fout.write('#%s\n' % header)
+        fout.write('%s\n\n' % text)
+
+
 class SpineRegGui(Frame):
 
     def __init__(self, parent, param_filename=None):
         Frame.__init__(self, parent)
 
         self.title = 'SpineDTI'
+        self.log = os.path.join(os.path.abspath('.'), 'log')
         self.parent = parent
         self.parameter_values = {}
         self.param = parameter.Parameter()
@@ -339,7 +346,8 @@ class SpineRegGui(Frame):
         btn_dwi_eddy.grid(row=i, column=2, sticky=W)
         btn_dwi_eddy_copy = Button(self, text='Copy', command=lambda:self.reset_entry(self.txt_dwi_eddy, self.txt_output_eddy.get()))
         btn_dwi_eddy_copy.grid(row=i, column=3)
-        btn_dwi_eddy = Button(self, text='XY-Reg', command=self.run_xy_reg); btn_dwi_eddy.grid(row=i, column=4, rowspan=2, columnspan=2, sticky=NSEW)
+        btn_dwi_eddy = Button(self, text='Save\nParam', command=self.save_reg_param); btn_dwi_eddy.grid(row=i, column=4, rowspan=2, sticky=NSEW)
+        btn_dwi_eddy = Button(self, text='XY-Reg', command=self.run_xy_reg); btn_dwi_eddy.grid(row=i, column=5, rowspan=2, sticky=NSEW)
 
         i += 1; Label(self, text='Mask'         , width=labelWidth).grid(row=i, column=0)
         self.txt_reg_mask = Entry(self); self.txt_reg_mask.grid(row=i, column=1, sticky=EW)
@@ -559,7 +567,9 @@ class SpineRegGui(Frame):
         topup_command.append('--logout=%s_log' % fn_out)
         topup_command.append('1> %s_topup_log.out' % self.txt_subject.get())
 
-        run_command(' '.join(topup_command))
+        cmd = ' '.join(topup_command)
+        append_text(self.log, cmd, 'run_topup')
+        run_command(cmd)
         print 'Done: TOPUP'
 
         tkMessageBox.showinfo(self.title, 'Done: TOPUP')
@@ -586,7 +596,9 @@ class SpineRegGui(Frame):
 
         eddy_command.append('--out=%s' % (os.path.join(working, self.txt_output_eddy.get())))
 
-        run_command(' '.join(eddy_command))
+        cmd = ' '.join(eddy_command)
+        append_text(self.log, cmd, 'run_eddy')
+        run_command(cmd)
         print 'Done: Eddy'
 
         self.reset_entry(self.txt_dwi_eddy, self.txt_output_eddy.get())
@@ -599,8 +611,21 @@ class SpineRegGui(Frame):
         tkMessageBox.showinfo(self.title, 'Non implemented yet')
         #tkMessageBox.showinfo(self.title, 'Done: Rigid registration')
 
-    def run_xy_reg(self):
+    def save_reg_param(self):
         dependency = [self.txt_dwi_eddy, self.txt_reg_mask, ]
+        if not self.check_dependency(dependency):
+            return
+
+        filename = tkFileDialog.asksaveasfilename(initialdir=self.txt_working.get(), initialfile='reg_2d.params')
+        if filename == '':
+            return
+
+        self.update_param_from_text()
+        param_2d = parameter.Parameter_reg2d(param_object=self.param)
+        param_2d.save_param(filename)
+
+    def run_xy_reg(self):
+        dependency = [self.txt_dwi_eddy, self.txt_reg_mask ]
         if not self.check_dependency(dependency):
             return
 
@@ -608,6 +633,10 @@ class SpineRegGui(Frame):
         param_2d = parameter.Parameter_reg2d(param_object=self.param)
 
         spine_reg.set_print_cmd(os.path.join(self.txt_working.get(), self.prefix() + 'xy_reg_cmd'))
+
+        cmd = '\n'.join([str(vars(param_2d)), 'spine_reg.run_registration(param_2d)'])
+        append_text(self.log, cmd, 'run_xy_reg')
+
         fn_out = spine_reg.run_registration(param_2d)
         self.reset_entry(self.txt_dwi_dti, fn_out)
         os.chdir(self.txt_working.get())
@@ -627,6 +656,12 @@ class SpineRegGui(Frame):
         tkMessageBox.showinfo(self.title, 'Done: Applywarp')
 
     def run_xy_reg_outlier(self, param_2d=None):
+        dependency = [self.txt_dwi_eddy, self.txt_reg_mask, self.txt_bval]
+        #if not self.check_dependency(dependency):
+        #    return
+
+        self.update_param_from_text()
+
         if param_2d is None:
             param_2d = parameter.Parameter_reg2d(param_object=self.param)
         spine_reg.generate_xy_trans(param_2d)
@@ -635,6 +670,13 @@ class SpineRegGui(Frame):
         print 'Done: XY-Reg outlier calculation'
 
     def run_generate_dti_maps(self, outlier=False):
+        cmd = 'generate_dti_maps(%s)' % (', '.join([self.txt_dwi_dti.get(),
+                                                    'bval_bvec=None',
+                                                    'bval=%s' % os.path.join(self.txt_working.get(), self.txt_bval.get()),
+                                                    'bvec=%s' % os.path.join(self.txt_working.get(), self.txt_bvec.get()),
+                                                    'prefix=%s' %self.prefix(),
+                                                    'outlier=%s' % outlier]))
+        append_text(self.log, cmd, 'run_generate_dti_maps')
         fn_out = generate_dti_maps(self.txt_dwi_dti.get(), bval_bvec=None, bval=os.path.join(self.txt_working.get(), self.txt_bval.get()), bvec=os.path.join(self.txt_working.get(), self.txt_bvec.get()), prefix=self.prefix(), outlier=outlier)
         print 'Done: Generate DTI maps'
 

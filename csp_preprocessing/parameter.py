@@ -280,10 +280,12 @@ class Parameter_reg2d:
         if type(self.b0frames) == type('str'):
             if os.path.isfile(self.b0frames):
                 self.b0frames = get_b0_from_bval(self.b0frames, threshold=self.b0_threshold, return_verbose=False, verbose=self.verbose)
-            elif len(self.b0frames.split(' ')) > 1:
-                self.b0frames = [int(tmp) for tmp in self.b0frames.split(' ')]
             elif len(self.b0frames.split(',')) > 1:
-                self.b0frames = [int(tmp) for tmp in self.b0frames.split(',')]
+                self.b0frames = [int(tmp) for tmp in self.b0frames.strip().strip('[]').split(',')]
+            elif len(self.b0frames.split(' ')) > 1:
+                self.b0frames = [int(tmp) for tmp in self.b0frames.strip().strip('[]').split(' ')]
+            elif os.path.basename(self.b0frames) == 'allb0':
+                self.b0frames = range(nib.load(self.fn_img).shape[-1])
             else:
                 sys.stderr.write('invalid b0frames or file not exist.: %s\n' % self.b0frames)
                 sys.exit(-1)
@@ -293,15 +295,25 @@ class Parameter_reg2d:
         self.allframes = range(self.nvolume)
 
         if type(self.noresample) == type(''):
-            self.noresample = (self.noresample[0].lower() == 't')
-        if self.noresample:
+            if '-noresample' in self.noresample:
+                pass
+            elif 'true' in self.noresample.lower():
+                self.noresample = '-noresample'
+            else:
+                self.noresample = ''
+        elif self.noresample is True:
             self.noresample = '-noresample'
         else:
             self.noresample = ''
 
         if type(self.nosearch) == type(''):
-            self.nosearch = (self.nosearch[0].lower() == 't')
-        if self.nosearch:
+            if '-nosearch' in self.nosearch:
+                pass
+            elif 'true' in self.nosearch.lower():
+                self.nosearch = '-nosearch'
+            else:
+                self.nosearch = ''
+        elif self.nosearch is True:
             self.nosearch = '-nosearch'
         else:
             self.nosearch = ''
@@ -328,8 +340,9 @@ class Parameter_reg2d:
                 sys.stderr.write('schedule file not found\n')
                 sys.exit(-1)
             self.schedule = '-schedule %s' % fn_schedule
-        elif self.schedule[:9] != '-schedule':
+        elif self.schedule[:9] != '-schedule' and os.path.isfile(self.schedule.strip()):
             self.schedule = '-schedule ' + self.schedule
+
 
     def set_multiband(self, multiband):
         if type(multiband) == type(''):
