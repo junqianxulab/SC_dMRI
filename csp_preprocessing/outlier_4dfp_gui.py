@@ -278,7 +278,7 @@ class Outlier4dfp(Frame):
         Label(self.frame_top, text='Z = ').pack(side=LEFT)
         self.spin_z = Spinbox(self.frame_top, from_=0, to=self.shape[2]-1, increment=1, command=self.change_z)
         self.spin_z.pack(side=LEFT)
-        self.make_checkbox(self.frame_bottom)
+        self.make_checkbox(self.frame_bottom, width=8)
 
         Label(self.frame_top, text='   CSV').pack(side=LEFT)
         self.txt_filename_csv = Entry(self.frame_top)
