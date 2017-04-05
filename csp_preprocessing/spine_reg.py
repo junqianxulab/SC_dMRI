@@ -83,7 +83,7 @@ def split_slice(param, filename, basename):
             run_command('mv %s_%s.nii %s' % (os.path.join(param.tempdir, basename), param.get_merge_slice_number(i, merged=False), dir_slice))
             #run_command('mv %s_%s.nii.gz %s' % (os.path.join(param.tempdir, basename), param.get_merge_slice_number(i, merged=False), dir_slice))
 
-def extract_frame(param, slc):
+def extract_frame_wo_fsl(param, slc):
     '''
     extract_frame(param, slc)
     '''
@@ -96,7 +96,7 @@ def extract_frame(param, slc):
         img_out = nib.Nifti1Image(dat[:,:,k], img.affine, img.header)
         nib.save(img_out, '%s.nii' % param.get_fn(slc=slc, frame=k, xenc=False))
 
-def extract_frame_fsl(param, slc):
+def extract_frame(param, slc):
     '''
     extract_frame(param, slc)
     '''
