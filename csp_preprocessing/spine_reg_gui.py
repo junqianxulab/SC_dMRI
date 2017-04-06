@@ -580,7 +580,7 @@ class SpineRegGui(Frame):
             return
 
         working = self.txt_working.get()
-        eddy_command = ['eddy']
+        eddy_command = [self.txt_eddy_app.get()]
         eddy_command.append('--flm=quadratic')
         eddy_command.append('--acqp=%s' % (os.path.join(working, self.prefix() + 'acqparams.txt')))
         eddy_command.append('--bvals=%s' % (os.path.join(working, self.txt_bval.get())))
