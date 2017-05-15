@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import re
 import nibabel as nib
 import os.path
@@ -11,7 +13,9 @@ def create_parser():
     parser.add_argument('-fn_mas', dest='fn_mas')
     parser.add_argument('-nitr', dest='nitr')
     parser.add_argument('-multiband', dest='multiband')
-    parser.add_argument('-b0frames', dest='b0frames')
+    #parser.add_argument('-b0frames', dest='b0frames')
+    parser.add_argument('-fn_bval', dest='fn_bval')
+    parser.add_argument('-thr_high_bval', dest='thr_high_bval')
     parser.add_argument('-b0_threshold', dest='b0_threshold')
     parser.add_argument('-schedule', dest='schedule')
     parser.add_argument('-noresample', dest='noresample')
@@ -133,7 +137,7 @@ class Parameter:
 class Parameter_reg2d:
     def __init__(self, fn_img=None, fn_mas=None, nitr=3, multiband=None, b0frames=None, b0_threshold=90,
                  schedule=None, noresample=False, nosearch=True, dir_slice=True, max_cpu=1, sleep_time=30, verbose=True,
-                 paramfile=None, args=None, param_object=None):
+                 paramfile=None, args=None, param_object=None, thr_high_bval=400):
         '''
         Parameter(
             fn_image=None,
@@ -154,7 +158,9 @@ class Parameter_reg2d:
         self.nitr = nitr
         self.multiband = multiband
         self.b0frames = b0frames
+        self.fn_bval = b0frames
         self.b0_threshold = b0_threshold
+        self.thr_high_bval = thr_high_bval
         self.schedule = schedule
         self.noresample = noresample
         self.nosearch = nosearch
@@ -174,9 +180,10 @@ class Parameter_reg2d:
         else:
             self.is_param_object = False
 
-        if self.fn_img is not None and self.fn_mas is not None and self.b0frames is not None:
+        if self.fn_img is not None and self.fn_mas is not None and self.fn_bval is not None:
             self.set_variables()
         print vars(self)
+        sys.stdout.flush()
 
     def read_parameter_object(self, param_object):
         dirname = 'xy_reg'
@@ -190,7 +197,8 @@ class Parameter_reg2d:
         self.fn_mas = os.path.join('..', param_object.fn_reg_mask)
         self.nitr = param_object.niter
         self.multiband = param_object.multiband
-        self.b0frames = os.path.join('..', param_object.fn_bval)
+        #self.b0frames = os.path.join('..', param_object.fn_bval)
+        self.fn_bval = os.path.join('..', param_object.fn_bval)
         self.b0_threshold = param_object.b0_threshold
         self.schedule = param_object.schedule
         self.noresample = param_object.noresample
@@ -209,8 +217,10 @@ class Parameter_reg2d:
                     ('fn_mas', self.fn_mas),
                     ('nitr', self.nitr),
                     ('multiband', self.multiband),
-                    ('b0frames', self.b0frames),
+                    ('fn_bval', self.fn_bval),
+                    #('b0frames', self.b0frames),
                     ('b0_threshold', self.b0_threshold),
+                    ('thr_high_bval', self.thr_high_bval),
                     ('schedule', self.schedule),
                     ('noresample', self.noresample),
                     ('nosearch', self.nosearch),
@@ -236,13 +246,16 @@ class Parameter_reg2d:
         self.nitr = int(self.nitr)
         #self.b0frames = b0frames
         self.b0_threshold = int(self.b0_threshold)
+        self.thr_high_bval = int(self.thr_high_bval)
+
         if type(self.verbose) == type(''):
             if self.verbose[0].lower() == 't':
                 self.verbose = True
             else:
                 self.verbose = False
 
-        test_miss = ['fn_img', 'fn_mas', 'b0frames']
+        #test_miss = ['fn_img', 'fn_mas', 'b0frames']
+        test_miss = ['fn_img', 'fn_mas', 'fn_bval']
         test_miss = [tmp for tmp in test_miss if tmp not in vars(self)]
         if len(test_miss) > 0:
             sys.stderr.write('%s variable(s) should be set first\n' % (', '.join(test_miss)))
@@ -277,7 +290,14 @@ class Parameter_reg2d:
             self.bn_mas = os.path.basename(self.fn_mas)
 
 
-        if type(self.b0frames) == type('str'):
+        if True:
+            if os.path.isfile(self.fn_bval):
+                self.b0frames = get_b0_from_bval(self.fn_bval, threshold=self.b0_threshold, return_verbose=False, verbose=self.verbose)
+            else:
+                sys.stderr.write('fn_bval should be bval filename\n')
+                sys.exit(-1)
+        if False:
+        #if type(self.b0frames) == type('str'):
             if os.path.isfile(self.b0frames):
                 self.b0frames = get_b0_from_bval(self.b0frames, threshold=self.b0_threshold, return_verbose=False, verbose=self.verbose)
             elif len(self.b0frames.split(',')) > 1:
@@ -290,9 +310,22 @@ class Parameter_reg2d:
                 sys.stderr.write('invalid b0frames or file not exist.: %s\n' % self.b0frames)
                 sys.exit(-1)
 
-        self.segframes = set_seg_frames(self.b0frames, self.nvolume)
+        #self.segframes = set_seg_frames(self.b0frames, self.nvolume)
+        self.lowsegframes, self.segframes = set_seg_frames(self.b0frames, self.nvolume, self.fn_bval, thr_high_bval=self.thr_high_bval)
+        self.lowseglist = range(len(self.lowsegframes))
         self.seglist = range(len(self.segframes))
         self.allframes = range(self.nvolume)
+
+        # group b0 frames
+        self.b0frames = [self.b0frames]
+        while len(self.b0frames[-1]) > 10:
+            self.b0frames.append(self.b0frames[-1][10:])
+            self.b0frames[-2] = self.b0frames[-2][:10]
+        if len(self.b0frames) > 1 and len(self.b0frames[-1]) < 10:
+            self.b0frames[-2] += self.b0frames[-1]
+            self.b0frames.pop(-1)
+        self.b0list = range(len(self.b0frames))
+
 
         if type(self.noresample) == type(''):
             if '-noresample' in self.noresample:
@@ -383,12 +416,20 @@ class Parameter_reg2d:
         else:
             fn_lst = [self.bn_img]
 
+        #if mode == 'b0':            # n = n_b0
+        #    fn_lst.append('b0')
         if mode == 'b0mean':            # n = 1
             fn_lst.append('b0mean')
         elif mode == 'segmean':         # n = n_seg
             fn_lst.append('segmean')
+        elif mode == 'lowsegmean':         # n = n_lowseg
+            fn_lst.append('lowsegmean')
         elif mode == 'seggeom':         # n = 1
             fn_lst.append('seggeom')
+        elif mode == 'lowseggeom':         # n = 1
+            fn_lst.append('lowseggeom')
+        elif mode == 'b0geom':         # n = 1
+            fn_lst.append('b0geom')
         elif mode == 'all':
             pass
         elif frame is not None:                           # n = n_frame
@@ -410,13 +451,23 @@ class Parameter_reg2d:
 
     def get_fn_mean(self, mode, seg=None, slc=None, xenc=False):
         if mode == 'b0':
-            return self.get_fn('b0mean', xenc=xenc, slc=slc)
+            return self.get_fn('b0mean', xenc=xenc, frame=seg, slc=slc)
+        elif mode == 'b0mean':
+            return self.get_fn('b0geom', xenc=xenc, slc=slc)
         elif mode == 'segdwi':
             return self.get_fn('segmean', xenc=xenc, frame=seg, slc=slc)
         elif mode == 'segmean':
             return self.get_fn('seggeom', xenc=xenc, slc=slc)
+        elif mode == 'lowsegdwi':
+            return self.get_fn('lowsegmean', xenc=xenc, frame=seg, slc=slc)
+        elif mode == 'lowsegmean':
+            return self.get_fn('lowseggeom', xenc=xenc, slc=slc)
         elif mode == 'seggeom':
-            return self.get_fn('b0mean', xenc=xenc, slc=slc)
+            return self.get_fn('b0geom', xenc=xenc, slc=slc)
+        elif mode == 'lowseggeom':
+            return self.get_fn('b0geom', xenc=xenc, slc=slc)
+        elif mode == 'b0geom':
+            return self.get_fn('b0geom', xenc=xenc, slc=slc)
 
     def get_fn_mask(self, slc=None, merged=True):
         return '%s_%s' % (os.path.join(self.get_dir_slice(slc), self.bn_mas), self.get_merge_slice_number(slc, merged))
@@ -431,11 +482,17 @@ class Parameter_reg2d:
 
     def get_frame_list(self, mode, seg=None):
         if mode == 'b0':
-            return self.b0frames
+            return self.b0frames[seg]
         elif mode == 'segdwi':
             return self.segframes[seg]
         elif mode == 'segmean':
             return self.seglist
+        elif mode == 'lowsegdwi':
+            return self.lowsegframes[seg]
+        elif mode == 'lowsegmean':
+            return self.lowseglist
+        elif mode == 'b0mean':
+            return self.b0list
         elif mode == 'all':
             return self.allframes
 
@@ -447,14 +504,21 @@ class Parameter_reg2d:
         return os.path.curdir
 
     def get_fn_mat(self, mode, frame=None, seg=None, slc=None):
-        if mode == 'b0' or mode == 'segdwi' or mode == 'segmean':
+        if mode == 'b0' or mode == 'segdwi' or mode == 'segmean' or mode == 'lowsegdwi' or mode == 'lowsegmean' or mode=='b0mean':
             return '%s_to_%s' % (self.get_fn(mode=mode, frame=frame, slc=slc, xenc=False, merged=True), os.path.basename(self.get_fn_mean(mode=mode, seg=seg, slc=slc)))
         elif mode == 'b0_concate':
-            return '%s_to_%s' % (self.get_fn(mode='b0', frame=frame, slc=slc, xenc=False, merged=True), os.path.basename(self.get_fn(mode='seggeom', slc=slc)))
+            return '%s_to_%s' % (self.get_fn(mode='b0', frame=frame, slc=slc, xenc=False, merged=True), os.path.basename(self.get_fn(mode='b0geom', slc=slc)))
+            #return '%s_to_%s' % (self.get_fn(mode='b0', frame=frame, slc=slc, xenc=False, merged=True), os.path.basename(self.get_fn(mode='seggeom', slc=slc)))
         elif mode == 'segdwi_concate':
-            return '%s_to_%s' % (self.get_fn(mode='segdwi', frame=frame, slc=slc, xenc=False, merged=True), os.path.basename(self.get_fn(mode='seggeom', slc=slc)))
+            return '%s_to_%s' % (self.get_fn(mode='segdwi', frame=frame, slc=slc, xenc=False, merged=True), os.path.basename(self.get_fn(mode='b0geom', slc=slc)))
+            #return '%s_to_%s' % (self.get_fn(mode='segdwi', frame=frame, slc=slc, xenc=False, merged=True), os.path.basename(self.get_fn(mode='seggeom', slc=slc)))
+        elif mode == 'lowsegdwi_concate':
+            return '%s_to_%s' % (self.get_fn(mode='lowsegdwi', frame=frame, slc=slc, xenc=False, merged=True), os.path.basename(self.get_fn(mode='b0geom', slc=slc)))
+            #return '%s_to_%s' % (self.get_fn(mode='lowsegdwi', frame=frame, slc=slc, xenc=False, merged=True), os.path.basename(self.get_fn(mode='lowseggeom', slc=slc)))
         elif mode == 'seggeom':
             return '%s_to_%s' % (self.get_fn(mode='seggeom', slc=slc, xenc=False, merged=True), os.path.basename(self.get_fn_mean(mode='seggeom', slc=slc)))
+        elif mode == 'lowseggeom':
+            return '%s_to_%s' % (self.get_fn(mode='lowseggeom', slc=slc, xenc=False, merged=True), os.path.basename(self.get_fn_mean(mode='lowseggeom', slc=slc)))
 
     def get_fn_xy_trans(self):
         return os.path.basename(self.bn_img) + '_xy_trans.csv'
@@ -481,7 +545,48 @@ def get_b0_from_bval(filename, threshold=90, return_verbose=False, verbose=True)
         return b0frames, rtn_str
     return b0frames
 
-def set_seg_frames(b0frames, nvolume):
+def set_seg_frames(b0frames, nvolume, fn_bval = None, thr_high_bval=400):
+    if fn_bval is None:
+        print 'fn_bval is None'
+        thr_high_bval = 0
+        bvals = [100 for i in range(nvolume)]
+    else:
+        with open(fn_bval) as fin:
+            bvals = [int(val) for val in fin.readline().strip().split()]
+            print 'bvals for segs:', bvals
+
+    low_b = []
+    high_b = []
+    a_low_b = []
+    a_high_b = []
+
+    for i in range(nvolume):
+        if i in b0frames:
+            continue
+        elif bvals[i] < thr_high_bval:
+            a_low_b.append(i)
+            if len(a_low_b) >= 10:
+                low_b.append(a_low_b)
+                a_low_b = []
+        else:
+            a_high_b.append(i)
+            if len(a_high_b) >= 10:
+                high_b.append(a_high_b)
+                a_high_b = []
+    if len(a_low_b) > 0:
+        if len(low_b) > 0:
+            low_b[-1] += a_low_b
+        else:
+            low_b.append(a_low_b)
+    if len(a_high_b) > 0:
+        if len(high_b) > 0:
+            high_b[-1] += a_high_b
+        else:
+            high_b.append(a_high_b)
+
+    return low_b, high_b
+
+def bak_set_seg_frames(b0frames, nvolume, thr_high_bval=400):
     if len(b0frames) < 1:
         return range(nvolume)
     segframes = [ range(1+int(b0frames[j-1]), int(b0frames[j]))
@@ -513,4 +618,26 @@ def get_frames_fram_bval(filename, threshold_min=90, threshold_max=400, return_v
         return target_frames, rtn_str
     return target_frames
 
+
+if __name__ == '__main__':
+    if len(sys.argv) < 5:
+        sys.stderr.write('Usage: parameter.py fn_img fn_mas fn_bval multiband [fn_out=reg_2d.params]\n')
+        sys.exit(-1)
+
+    fn_img = sys.argv[1]
+    fn_mas = sys.argv[2]
+    fn_bval = sys.argv[3]
+    multiband = int(sys.argv[4])
+    #noresample = False if multiband > 1 else True
+    noresample = False
+    nosearch = True
+
+    if not os.path.isfile(fn_img) or not os.path.isfile(fn_mas) or not os.path.isfile(fn_bval):
+        sys.stderr.write('Usage: file not exist\n')
+        sys.exit(-1)
+
+    fn_out = 'reg_2d.params' if len(sys.argv) < 6 else sys.argv[5]
+    #param_2d = Parameter_reg2d(fn_img=fn_img, fn_mas=fn_mas, multiband=multiband, b0frames=fn_bval, noresample=noresample, nosearch=nosearch)
+    param_2d = Parameter_reg2d(fn_img=fn_img, fn_mas=fn_mas, multiband=multiband, b0frames=fn_bval, noresample=noresample, nosearch=nosearch)
+    param_2d.save_param(fn_out)
 

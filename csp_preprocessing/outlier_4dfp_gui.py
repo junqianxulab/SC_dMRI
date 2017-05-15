@@ -29,7 +29,8 @@ class MplCanvas(FigureCanvas):
         fig = Figure(figsize=(width, height), dpi=dpi)
         self.axes = fig.add_subplot(111)
         # We want the axes cleared every time plot() is called
-        self.axes.hold(False)
+        #self.axes.hold(False)
+        self.axes.clear()
         FigureCanvas.__init__(self, fig, master=parent)
         self.show()
 
@@ -206,9 +207,10 @@ class Outlier4dfp(Frame):
         #z_min  = self.values[z,:].min()
         #z_max  = self.values[z,:].max()
 
-        self.frame_graph.axes.hold(False)
+        #self.frame_graph.axes.hold(False)
+        self.frame_graph.axes.clear()
         self.frame_graph.axes.plot([0, df], [z_mean, z_mean], 'k-')
-        self.frame_graph.axes.hold(True)
+        #self.frame_graph.axes.hold(True)
         self.frame_graph.axes.plot([0, df], [z_mean + 1*z_std, z_mean + 1*z_std], 'y--')
         self.frame_graph.axes.plot([0, df], [z_mean + 2*z_std, z_mean + 2*z_std], 'g--')
         self.frame_graph.axes.plot([0, df], [z_mean + 3*z_std, z_mean + 3*z_std], 'b--')
@@ -278,7 +280,7 @@ class Outlier4dfp(Frame):
         Label(self.frame_top, text='Z = ').pack(side=LEFT)
         self.spin_z = Spinbox(self.frame_top, from_=0, to=self.shape[2]-1, increment=1, command=self.change_z)
         self.spin_z.pack(side=LEFT)
-        self.make_checkbox(self.frame_bottom, width=8)
+        self.make_checkbox(self.frame_bottom, width=4)
 
         Label(self.frame_top, text='   CSV').pack(side=LEFT)
         self.txt_filename_csv = Entry(self.frame_top)

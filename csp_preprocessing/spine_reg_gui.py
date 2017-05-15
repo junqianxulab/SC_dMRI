@@ -45,6 +45,7 @@ class SpineRegGui(Frame):
         self.reset_entry(self.spin_nitr, 3)
         self.chk_nosearch.invoke()
         self.reset_entry(self.txt_b0_threshold, 90)
+        self.reset_entry(self.txt_high_b_threshold, 400)
 
         dirname = os.path.dirname(os.path.realpath(__file__))
         self.reset_entry(self.txt_topup_config, os.path.join(dirname, 'b02b0_ON_1_3mm.cnf'))
@@ -100,6 +101,7 @@ class SpineRegGui(Frame):
         self.param.fn_bval              = self.txt_bval.get()
         self.param.fn_bvec              = self.txt_bvec.get()
         self.param.b0_threshold         = self.txt_b0_threshold.get()
+        #self.param.b0_threshold         = self.txt_b0_threshold.get() #FIXME
 
         self.param.topup_app            = self.txt_topup_app.get()
         self.param.topup_config         = self.txt_topup_config.get()
@@ -243,13 +245,16 @@ class SpineRegGui(Frame):
         btn_bval = Button(frm_prepa, text='...', width=dddWidth, command=lambda:self.filenameDialog_text(self.txt_bval));
         btn_bval.grid(row=ii, column=2, sticky=W)
 
-        Label(frm_prepa, text='B0 threshold').grid(row=ii, column=3, sticky=E)
+        Label(frm_prepa, text='b0 threshold').grid(row=ii, column=3, sticky=E)
         self.txt_b0_threshold = Entry(frm_prepa, width=10); self.txt_b0_threshold.grid(row=ii, column=4)
 
         ii += 1; Label(frm_prepa, text='bvec'         , width=labelWidth).grid(row=ii, column=0)
         self.txt_bvec = Entry(frm_prepa); self.txt_bvec.grid(row=ii, column=1, sticky=EW)
         btn_bvec = Button(frm_prepa, text='...', width=dddWidth, command=lambda:self.filenameDialog_text(self.txt_bvec));
         btn_bvec.grid(row=ii, column=2, sticky=W)
+
+        Label(frm_prepa, text='high b threshold').grid(row=ii, column=3, sticky=E)
+        self.txt_high_b_threshold = Entry(frm_prepa, width=10); self.txt_high_b_threshold.grid(row=ii, column=4)
 
         frm_prepa.grid_columnconfigure(1, weight=1)
         frm_prepa.grid(row=i, rowspan=ii+1, column=0, columnspan=6, sticky=NSEW)
