@@ -122,6 +122,8 @@ class SpineRegGui(Frame):
         self.param.fn_dwi_eddy          = self.txt_dwi_eddy.get()
         self.param.fn_reg_mask          = self.txt_reg_mask.get()
         self.param.fn_reg_outlier       = self.txt_reg_outlier.get()
+        self.param.fn_reg_slices        = self.txt_reg_slices.get()
+
         self.param.fn_reg_out           = self.txt_output_reg.get()
         self.param.fn_dti               = self.txt_dti.get()
         self.param.fn_dwi_dti           = self.txt_dwi_dti.get()
@@ -161,6 +163,7 @@ class SpineRegGui(Frame):
         self.reset_entry(self.txt_dwi_eddy        , self.param.fn_dwi_eddy)
         self.reset_entry(self.txt_reg_mask        , self.param.fn_reg_mask)
         self.reset_entry(self.txt_reg_outlier     , self.param.fn_reg_outlier)
+        self.reset_entry(self.txt_reg_slices      , self.param.fn_reg_slices)
         self.reset_entry(self.txt_output_reg      , self.param.fn_reg_out)
                                                         
         self.reset_entry(self.txt_dwi_dti         , self.param.fn_dwi_dti)
@@ -360,6 +363,9 @@ class SpineRegGui(Frame):
         btn_reg_mask.grid(row=i, column=2, sticky=W)
         btn_reg_mask_make = Button(self, text='Make', command=lambda:self.make_mask(self.txt_dwi_eddy.get(), rtn=self.txt_reg_mask)); btn_reg_mask_make.grid(row=i, column=3)
 
+        i += 1; Label(self, text='Slices'      , width=labelWidth).grid(row=i, column=0)
+        self.txt_reg_slices = Entry(self); self.txt_reg_slices.grid(row=i, column=1, sticky=EW)
+
         i += 1; Label(self, text='Outlier'      , width=labelWidth).grid(row=i, column=0)
         self.txt_reg_outlier = Entry(self); self.txt_reg_outlier.grid(row=i, column=1, sticky=EW)
         btn_reg_outlier = Button(self, text='...', width=dddWidth, command=lambda:self.filenameDialog_text(self.txt_reg_outlier))
@@ -378,7 +384,7 @@ class SpineRegGui(Frame):
         # DTI
         i += 1; Label(self, text='  DTI map with outlier rejection').grid(row=i, column=0, columnspan=2, sticky=W)
 
-        i += 1; Label(self, text='DWI'          , width=labelWidth).grid(row=i, column=0)
+        i += 1; Label(self, text='DWI_reg'       , width=labelWidth).grid(row=i, column=0)
         self.txt_dwi_dti = Entry(self); self.txt_dwi_dti.grid(row=i, column=1, sticky=EW)
         btn_dwi_dti = Button(self, text='...', width=dddWidth, command=lambda:self.filenameDialog_text(self.txt_dwi_dti))
         btn_dwi_dti.grid(row=i, column=2, sticky=W)
@@ -641,8 +647,18 @@ class SpineRegGui(Frame):
 
         cmd = '\n'.join([str(vars(param_2d)), 'spine_reg.run_registration(param_2d)'])
         append_text(self.log, cmd, 'run_xy_reg')
-
-        fn_out = spine_reg.run_registration(param_2d)
+        
+        sub_slices = self.txt_reg_slices.get()
+        if sub_slices != '':
+            try:
+                slices = [value.strip() for value in sub_slices.strip().split(',')]
+                slices = [int(value) for value in slices if value != '']
+                sub_slices = slices
+            except:
+                sub_slices = None
+        else:
+            sub_slices = None
+        fn_out = spine_reg.run_registration(param_2d, sub_slices=sub_slices)
         self.reset_entry(self.txt_dwi_dti, fn_out)
         os.chdir(self.txt_working.get())
         print 'Done: XY-Reg'
