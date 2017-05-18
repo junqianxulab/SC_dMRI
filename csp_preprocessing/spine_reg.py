@@ -114,15 +114,21 @@ def merge_frame(param, mode, slc=None, seg=None):
     lst = [ param.get_fn('frame', slc=slc, frame=k, xenc=True) for k in alist ]
     run_command('fslmerge -t %s %s' % (param.get_fn_slc_concate(mode, slc), ' '.join(lst)))
 
-def merge_slice(param, mode, seg=None):
+def merge_slice(param, mode, seg=None, existing=[]):
     '''
     merge_slice(param, mode, seg)
     mode: 'b0', 'segdwi', 'seggeom', 'all'
     '''
 
+    fn_out = param.get_fn(mode)
     if param.multiband > 1:
         slice_groups = [ [] for tmp in range(param.multiband) ]
         for i in range(param.ngroup):
+            # merge with existing registration
+            if i in existing:
+                for j in range(param.multiband):
+                    slice_groups[j].append('%s/%s_slice_%04d.nii' % (param.tempdir, os.path.basename(fn_out), i+j*param.ngroup))
+                continue
             filename = param.get_fn_slc_concate(mode, i)
             basename = '%s_mbgrp_%04d' % (os.path.join(param.tempdir, param.bn_img), i)
             run_command('fslslice %s %s' % (filename, basename))
@@ -134,10 +140,13 @@ def merge_slice(param, mode, seg=None):
             slice_list += a_list
     else:
         slice_list = [ param.get_fn_slc_concate(mode, slc) for slc in range(param.ngroup) ]
+        # merge with existing registration
+        for i in existing:
+            slice_list[i] = '%s/%s_slice_%04d.nii' % (param.tempdir, os.path.basename(fn_out), i)
     if len(slice_list) > 1:
         run_command('fslmerge -z %s %s' % (param.get_fn(mode), ' '.join(slice_list)))
     else:
-        run_command('cp %s %s' % (slice_list[0], param.get_fn(mode)))
+        run_command('cp %s %s' % (slice_list[0], fn_out))
 
 def init(param, mode, slc, seg=None):
     '''
@@ -397,13 +406,35 @@ def run_applywarp(param):
         shutil.copy(fn_out + '.nii.gz', '../%s' % fn_out)
         return os.path.basename(fn_out) + '.nii.gz'
 
-def run_registration(param):
+def run_registration(param, sub_slices=None):
     #
+    if sub_slices is None:
+        lst_slices = range(param.ngroup)
+    else:
+        # sub slices
+        # there should be exisiting registration result
+        fn_reg_out = param.get_fn('all')
+        if not (os.path.isfile(fn_reg_out) or os.path.isfile(fn_reg_out+'.nii') or os.path.isfile(fn_reg_out+'.nii.gz')):
+            sys.stderr.write('%s not exist\n' % fn_reg_out)
+            sys.exit(-1)
+
+        if param.multiband > 1:
+            lst_slices = []
+            for s in sub_slices:
+                s = int(s)
+                if s > param.ngroup and s not in lst_slices:
+                    lst_slices.append(s)
+                elif s not in lst_slices:
+                    lst_slices.append(s)
+        else:
+            lst_slices = [int(s) for s in sub_slices]
+
     print '## Extract slices'
     split_slice(param, param.fn_mas, param.bn_mas)
-    img = split_slice(param, param.fn_img, param.bn_img)
+    split_slice(param, param.fn_img, param.bn_img)
 
-    for slc in range(param.ngroup):
+    #for slc in range(param.ngroup):
+    for slc in lst_slices:
         # extract frames
         extract_frame(param, slc)
 
@@ -454,8 +485,16 @@ def run_registration(param):
         merge_frame(param, 'all', slc=slc)
   
     print '## Merge frames'
-    merge_slice(param, 'all')
+    if sub_slices is not None:
+        existing = [slc for slc in range(param.ngroup) if slc not in lst_slices]
+        basename = os.path.basename(fn_reg_out)
+        run_command('fslslice %s %s/%s' % (fn_reg_out, param.tempdir, basename))
+    else:
+        existing = []
+
+    merge_slice(param, 'all', existing=existing)
     dwi_utils.gzip(param.get_fn('all') + '.nii')
+
 
     # remove intermediate files
     run_command('rm -rf %s' % param.tempdir)
@@ -560,6 +599,9 @@ if __name__ == '__main__':
         param = Parameter_reg2d(paramfile=filename)
         #param = Param('CSPV032_dwi1_qa.params')
         #param.set_multiband(2)
-        run_registration(param)
+
+        sub_slices = None if len(sys.argv) == 2 else [int(s) for s in sys.argv[2:]]
+        print 'sub_slices:', sub_slices
+        run_registration(param, sub_slices=sub_slices)
 
 
