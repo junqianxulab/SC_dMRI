@@ -2,20 +2,22 @@
 
 import os
 import sys
-import re
+# import re
 import subprocess
 from tempfile import mkstemp
 import time
-#from dwi_utils import run_command
+# from dwi_utils import run_command
 import dwi_utils
 import shutil
 import nibabel as nib
 import numpy as np
+from parameter import Parameter_reg2d
 
-#run_command = dwi_utils.run_command
-def run_command_with_prefix(cmd, print_cmd = True, prefix="export FSLOUTPUTTYPE='NIFTI' ; "):
+
+# run_command = dwi_utils.run_command
+def run_command_with_prefix(cmd, print_cmd=True, prefix="export FSLOUTPUTTYPE='NIFTI' ; "):
     if print_cmd is True:
-        print '>> %s' % cmd
+        print('>> %s' % cmd)
     elif type(print_cmd) == type('') and print_cmd != '':
         dwi_utils.append_log(print_cmd, cmd)
 
@@ -23,9 +25,8 @@ def run_command_with_prefix(cmd, print_cmd = True, prefix="export FSLOUTPUTTYPE=
     return p
 
 run_command = run_command_with_prefix
-
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
-from parameter import Parameter_reg2d
+
 
 def split_slice_wo_fsl(param, filename, basename):
     run_command('mkdir -p %s' % param.tempdir)
@@ -161,7 +162,8 @@ def init(param, mode, slc, seg=None):
         cmd = 'cp -f %s.nii %s.nii' % (param.get_fn(mode, k, slc=slc, xenc=False), param.get_fn(mode, k, slc=slc, xenc=True))
         #cmd = 'cp -f %s.nii.gz %s.nii.gz' % (param.get_fn(mode, k, slc=slc, xenc=False), param.get_fn(mode, k, slc=slc, xenc=True))
         run_command(cmd)
-        run_command('cp -f %s %s' % (param.identmat, mat))
+        #run_command('cp -f %s %s0GenericAffine.mat' % (param.identmat, mat))
+        run_command('cp -f %s %s0GenericAffine.mat' % (param.identmat_itk, mat))
 
 def calc(param, mode, slc, seg=None, itr=None):
     '''
@@ -174,11 +176,22 @@ def calc(param, mode, slc, seg=None, itr=None):
 
     lst = [ param.get_fn(mode, frame=k, slc=slc) for k in alist ]
 
-    run_command('fslmerge -t %s_concat %s' % (mean_name, ' '.join(lst)))
-    run_command('fslmaths %s_concat -Tmean %s' % (mean_name, mean_name))
-    if itr is not None:
-        run_command('cp %s_concat.nii %s_concat_itr%s.nii' % (mean_name, mean_name, itr))
-        run_command('cp %s.nii %s_itr%s.nii' % (mean_name, mean_name, itr))
+    if param.use_single_image_ref is False:
+        run_command('fslmerge -t %s_concat %s' % (mean_name, ' '.join(lst)))
+        run_command('fslmaths %s_concat -Tmean %s' % (mean_name, mean_name))
+        if itr is not None:
+            run_command('cp %s_concat.nii %s_concat_itr%s.nii' % (mean_name, mean_name, itr))
+            run_command('cp %s.nii %s_itr%s.nii' % (mean_name, mean_name, itr))
+    else:
+        if mode=='b0':
+            max_ind = 0
+        else:
+            fn_mask = param.get_fn_mask(slc) + '.nii'
+            dat_mask = nib.load(fn_mask).get_data().astype(bool)
+            lst_mean_intensity = [ nib.load(fn + '.nii').get_data()[dat_mask].mean() for fn in lst ]
+            max_ind = np.argmax(lst_mean_intensity)
+        run_command('cp %s.nii %s.nii' % (lst[max_ind], mean_name))
+
 
 def check_marker_filenames(filenames):
     block_filenames = filenames[:]
@@ -194,12 +207,12 @@ def check_marker_filenames(filenames):
 
 def run_command_bg(cmd, block_filenames=[], max_cpu=1, sleep_time=10, tempdir='.'):
     if '"' in cmd:
-        print '" in command, %s' % cmd
-        print 'operation runs as foreground not background'
+        print('" in command, %s' % cmd)
+        print('operation runs as foreground not background')
         run_command(cmd)
         return block_filenames
 
-    print max_cpu
+    print(max_cpu)
 
     block_filenames = check_marker_filenames(block_filenames)
     while len(block_filenames) >= max_cpu:
@@ -228,14 +241,36 @@ def xalign(param, mode, slc, seg=None, itr=None):
     for k in alist:
         # FIXME
         #cmd = 'flirt -in %s -inweight %s -ref %s -refweight %s -out %s -omat %s %s %s %s -interp sinc -cost mutualinfo' %\
-        cmd = 'flirt -in %s -inweight %s -ref %s -refweight %s -out %s -omat %s %s %s %s -interp sinc' %\
-                (param.get_fn(mode, frame=k, slc=slc), param.get_fn_mask(slc), mean_name, param.get_fn_mask(slc), param.get_fn(mode, frame=k, slc=slc), param.get_fn_tempmat(slc=slc, frame=k, seg=mode+str(seg)), param.schedule, param.noresample, param.nosearch)
+        #cmd = 'flirt -in %s -inweight %s -ref %s -refweight %s -out %s -omat %s %s %s %s -interp sinc' %\
+        #        (param.get_fn(mode, frame=k, slc=slc), param.get_fn_mask(slc), mean_name, param.get_fn_mask(slc), param.get_fn(mode, frame=k, slc=slc), param.get_fn_tempmat(slc=slc, frame=k, seg=mode+str(seg)), param.schedule, param.noresample, param.nosearch)
+        cmd = 'antsRegistration \
+            -d 3 \
+            --interpolation BSpline[3] \
+            --restrict-deformation 1x1x0x1x1x0 \
+            --convergence 10 \
+            --shrink-factors 1 \
+            --smoothing-sigmas {smoothing_sigmas} \
+            --metric {cost}[{fn_ref}.nii,{fn_in}.nii] \
+            --transform Translation[3] \
+            --initial-moving-transform identity \
+            --masks [{fn_mask}.nii,{fn_mask}.nii] \
+            --output [{fn_warp},{fn_out}.nii] \
+            '.format(
+                smoothing_sigmas=param.smoothing_sigmas,
+                cost=param.cost,
+                fn_ref=mean_name,
+                fn_in=param.get_fn(mode, frame=k, slc=slc),
+                fn_warp=param.get_fn_tempmat(slc=slc, frame=k, seg=mode+str(seg)),
+                fn_out=param.get_fn(mode, frame=k, slc=slc),
+                fn_mask=param.get_fn_mask(slc),
+            )
+            #--transform Affine[3] \
         if bg:
             block_filenames = run_command_bg(cmd, block_filenames, max_cpu=param.max_cpu, sleep_time=param.sleep_time, tempdir=param.tempdir)
         else:
             run_command(cmd)
             if itr is not None:
-                run_command('cp %s %s' % (param.get_fn_tempmat(slc=slc, frame=k, seg=mode+str(seg)), param.get_fn_tempmat(slc=slc, frame=k, seg=mode+str(seg)) + '_itr%s' % itr) )
+                run_command('cp %s0GenericAffine.mat %s0GenericAffine.mat' % (param.get_fn_tempmat(slc=slc, frame=k, seg=mode+str(seg)), param.get_fn_tempmat(slc=slc, frame=k, seg=mode+str(seg)) + '_itr%s' % itr) )
     if bg:
         while len(block_filenames) > 0:
             time.sleep(param.sleep_time)
@@ -243,11 +278,24 @@ def xalign(param, mode, slc, seg=None, itr=None):
 
     for k in alist:
         mat = param.get_fn_mat(mode, frame=k, seg=seg, slc=slc) + '.mat'
-        run_command('convert_xfm -omat %s -concat %s %s' % (mat, param.get_fn_tempmat(slc=slc, frame=k, seg=mode+str(seg)), mat))
+        #run_command('convert_xfm -omat %s -concat %s %s' % (mat, param.get_fn_tempmat(slc=slc, frame=k, seg=mode+str(seg)), mat))
+        run_command('ComposeMultiTransform 3 %s0GenericAffine.mat %s0GenericAffine.mat %s0GenericAffine.mat' % (mat, param.get_fn_tempmat(slc=slc, frame=k, seg=mode+str(seg)), mat))
 
         # skip?
-        cmd = 'flirt -in %s -ref %s -out %s -applyxfm -init %s -interp sinc' %\
-                (param.get_fn(mode, frame=k, slc=slc, xenc=False), mean_name, param.get_fn(mode, frame=k, slc=slc), mat)
+        #cmd = 'flirt -in %s -ref %s -out %s -applyxfm -init %s -interp sinc' %\
+        #        (param.get_fn(mode, frame=k, slc=slc, xenc=False), mean_name, param.get_fn(mode, frame=k, slc=slc), mat)
+        cmd = 'antsApplyTransforms \
+            -d 3 \
+            --input {fn_in}.nii \
+            --reference-image {fn_ref}.nii \
+            --output {fn_out}.nii \
+            --interpolation BSpline[3] \
+            --transform {fn_mat}0GenericAffine.mat \
+            '.format(fn_in=param.get_fn(mode, frame=k, slc=slc, xenc=False),
+                     fn_ref=mean_name,
+                     fn_out=param.get_fn(mode, frame=k, slc=slc),
+                     fn_mat=mat,
+                     )
         run_command(cmd)
         if itr is not None:
             run_command('cp %s %s' % (param.get_fn(mode, frame=k, slc=slc)+'.nii', param.get_fn(mode, frame=k, slc=slc)+'_itr%s'%itr+'.nii'))
@@ -263,14 +311,37 @@ def seggeommean_b0geom(param, mode, slc):
     mat = param.get_fn_mat(mode, slc=slc)
     #invmat = ...
 
-    run_command('flirt -ref %s -refweight %s -in %s -inweight %s -out %s -omat %s %s %s -nosearch -interp sinc' %
-            (b0geom, mask, geommean, mask, mat, param.get_fn_tempmat(slc=slc, seg=mode+'_b0geom'), param.schedule, param.noresample) )
+    #run_command('flirt -ref %s -refweight %s -in %s -inweight %s -out %s -omat %s %s %s -nosearch -interp sinc' %
+    #        (b0geom, mask, geommean, mask, mat, param.get_fn_tempmat(slc=slc, seg=mode+'_b0geom'), param.schedule, param.noresample) )
+    run_command('antsRegistration \
+            -d 3 \
+            --interpolation BSpline[3] \
+            --restrict-deformation 1x1x0x1x1x0 \
+            --convergence 10 \
+            --shrink-factors 1 \
+            --smoothing-sigmas {smoothing_sigmas} \
+            --metric {cost}[{fn_ref}.nii,{fn_in}.nii] \
+            --transform Translation[3] \
+            --initial-moving-transform identity \
+            --masks [{fn_mask}.nii,{fn_mask}.nii] \
+            --output [{fn_warp},{fn_out}.nii] \
+            '.format(
+                smoothing_sigmas=param.smoothing_sigmas,
+                cost=param.cost_seggeom_b0geom,
+                fn_ref=b0geom,
+                fn_in=geommean,
+                fn_out=mat,
+                fn_warp=param.get_fn_tempmat(slc=slc, seg=mode+'_b0geom'),
+                fn_mask=mask,
+            )
+            #--transform Affine[3] \
+    )
     mat += '.mat'
-    run_command('cp -f %s %s' % (param.get_fn_tempmat(slc=slc, seg=mode+'_b0geom'), mat))
+    run_command('cp -f %s0GenericAffine.mat %s0GenericAffine.mat' % (param.get_fn_tempmat(slc=slc, seg=mode+'_b0geom'), mat))
 
     #invmat = '%s%s%s%s%s.mat' % (b0mean, slc, '_to_', os.path.basename(geommean), slc)
     #run_command('convert_xfm -omat %s -inverse %s' % (invmat, mat))
-        
+
 def compose_xfm(param, mode, slc=None, seg=None):
     '''
     compose_xfm(param, mode, slc=None, seg=None)
@@ -302,12 +373,17 @@ def compose_xfm(param, mode, slc=None, seg=None):
 
         if mode == 'b0':
             #run_command('cp -f %s %s' % (matAtoB, matAtoD))
-            run_command('convert_xfm -omat %s -concat %s %s' %
+            #run_command('convert_xfm -omat %s -concat %s %s' %
+            run_command('ComposeMultiTransform 3 %s0GenericAffine.mat %s0GenericAffine.mat %s0GenericAffine.mat' %
                     (matAtoD, matBtoD, matAtoB) )
         else:
-            run_command('convert_xfm -omat %s -concat %s %s' %
+            #run_command('convert_xfm -omat %s -concat %s %s' %
+            #run_command('ComposeMultiTransform 3 %s %s %s' %
+            run_command('ComposeMultiTransform 3 %s0GenericAffine.mat %s0GenericAffine.mat %s0GenericAffine.mat' %
                     (tempmat, matBtoC, matAtoB) )
-            run_command('convert_xfm -omat %s -concat %s %s' %
+            #run_command('convert_xfm -omat %s -concat %s %s' %
+            #run_command('ComposeMultiTransform 3 %s %s %s' %
+            run_command('ComposeMultiTransform 3 %s0GenericAffine.mat %s0GenericAffine.mat %s0GenericAffine.mat' %
                     (matAtoD, matCtoD, tempmat) )
         #run_command('flirt -in %s -ref %s -applyxfm -init %s -out %s -interp sinc' %
         #        (param.get_fn(mode, frame=k, slc=slc, xenc=False), seggeommean, matAtoD, param.get_fn(mode, frame=k, slc=slc)))
@@ -324,9 +400,22 @@ def apply_xfm(param, mode, slc=None, seg=None):
 
     for k in alist:
         matAtoD = param.get_fn_mat('%s_concate' % mode, frame=k, slc=slc) + '.mat'
-        run_command('flirt -in %s -ref %s -applyxfm -init %s -out %s -interp sinc' %
-                (param.get_fn(mode, frame=k, slc=slc, xenc=False), b0geom, matAtoD, param.get_fn(mode, frame=k, slc=slc)))
+        #run_command('flirt -in %s -ref %s -applyxfm -init %s -out %s -interp sinc' %
+        #        (param.get_fn(mode, frame=k, slc=slc, xenc=False), b0geom, matAtoD, param.get_fn(mode, frame=k, slc=slc)))
         #       (param.get_fn(mode, frame=k, slc=slc, xenc=False), seggeommean, matAtoD, param.get_fn(mode, frame=k, slc=slc)))
+        run_command('antsApplyTransforms \
+            -d 3 \
+            --input {fn_in}.nii \
+            --reference-image {fn_ref}.nii \
+            --output {fn_out}.nii \
+            --interpolation BSpline[3] \
+            --transform {fn_mat}0GenericAffine.mat \
+            '.format(fn_in=param.get_fn(mode, frame=k, slc=slc, xenc=False),
+                     fn_ref=b0geom,
+                     fn_out=param.get_fn(mode, frame=k, slc=slc),
+                     fn_mat=matAtoD,
+                     )
+        )
 
 def get_xy_trans(param, mode, slc=None, seg=None):
     '''
@@ -385,21 +474,37 @@ def align(param, mode, slc, seg=None):
     '''
     init(param, mode, slc, seg)
     calc(param, mode, slc, seg)
-    
+
     for t in range(param.nitr):
         xalign(param, mode, slc, seg, t)
         calc(param, mode, slc, seg, t)
 
 def run_applywarp(param):
+    # extract
+    split_slice(param, param.fn_img, param.bn_img)
     for slc in range(param.ngroup):
-        apply_xfm(param, 'b0', slc=slc)
+    #for slc in lst_slices:
+        # extract frames
+        extract_frame(param, slc)
+
+    for slc in range(param.ngroup):
+        for j in param.b0list:
+            apply_xfm(param, 'b0', slc=slc, seg=j)
         for j in param.seglist:
             apply_xfm(param, 'segdwi', slc=slc, seg=j)
+        for j in param.lowseglist:
+            apply_xfm(param, 'lowsegdwi', slc=slc, seg=j)
         merge_frame(param, 'all', slc=slc)
 
-    print '## Merge frames'
+    print('## Merge frames')
     merge_slice(param, 'all')
-    dwi_utils.gzip(param.get_fn('all') + '.nii')
+    fn_out = param.get_fn('all')
+    dwi_utils.gzip(fn_out + '.nii')
+
+    # copy hdr
+    #run_command('fslhd -x %s > %s' % (param.fn_img, 'hdr.xml'))
+    #run_command('fslcreatehd %s %s' % ('hdr.xml', fn_out))
+    run_command('fslcpgeom %s %s' % (param.fn_img, fn_out))
 
     if param.is_param_object:
         fn_out = param.get_fn('all')
@@ -429,7 +534,7 @@ def run_registration(param, sub_slices=None):
         else:
             lst_slices = [int(s) for s in sub_slices]
 
-    print '## Extract slices'
+    print('## Extract slices')
     split_slice(param, param.fn_mas, param.bn_mas)
     split_slice(param, param.fn_img, param.bn_img)
 
@@ -483,8 +588,8 @@ def run_registration(param, sub_slices=None):
         #apply_xfm(param, 'seggeom')
 
         merge_frame(param, 'all', slc=slc)
-  
-    print '## Merge frames'
+
+    print('## Merge frames')
     if sub_slices is not None:
         existing = [slc for slc in range(param.ngroup) if slc not in lst_slices]
         basename = os.path.basename(fn_reg_out)
@@ -493,8 +598,13 @@ def run_registration(param, sub_slices=None):
         existing = []
 
     merge_slice(param, 'all', existing=existing)
-    dwi_utils.gzip(param.get_fn('all') + '.nii')
+    fn_out = param.get_fn('all')
+    dwi_utils.gzip(fn_out + '.nii')
 
+    # copy hdr
+    #run_command('fslhd -x %s > %s' % (param.fn_img, 'hdr.xml'))
+    #run_command('fslcreatehd %s %s' % ('hdr.xml', fn_out))
+    run_command('fslcpgeom %s %s' % (param.fn_img, fn_out))
 
     # remove intermediate files
     run_command('rm -rf %s' % param.tempdir)
@@ -502,26 +612,25 @@ def run_registration(param, sub_slices=None):
     # check the quality of registration by playing a movie in fsl
     #run_command('fslview %s_xenc.nii.gz' % param.p)
     if param.is_param_object:
-        fn_out = param.get_fn('all')
         shutil.copy(fn_out + '.nii.gz', '../')
         return os.path.basename(fn_out) + '.nii.gz'
     else:
-        print 'fslview %s_xenc.nii.gz' % param.bn_img
+        print('fslview %s_xenc.nii.gz' % param.bn_img)
 
 def generate_xy_trans(param, obj_return_value=None):
     xy_trans_group = []
     fn_out = param.get_fn_xy_trans()
     fout = open(fn_out, 'w')
     fout.write('%s,%s,%s,%s,%s\n' % ('mbgroup', 'frame', 'x_trans', 'y_trans', 'distance'))
-    print 'Translation > 2.0 mm:'
-    print '%s\t%s\t%s\t%s\t%s' % ('mbgroup', 'frame', 'x_trans', 'y_trans', 'distance')
+    print('Translation > 2.0 mm:')
+    print('%s\t%s\t%s\t%s\t%s' % ('mbgroup', 'frame', 'x_trans', 'y_trans', 'distance'))
     for slc in range(param.ngroup):
         xy_trans, x_trans, y_trans = get_xy_trans(param, 'all', slc=slc)
         xy_trans_group.append(xy_trans)
         for frame in range(len(xy_trans)):
             fout.write('%s,%s,%s,%s,%s\n' % (slc, frame, x_trans[frame], y_trans[frame], xy_trans[frame]))
             if xy_trans[frame] > 2.0:
-                print '%s\t%s\t%s\t%s\t%s' % (slc, frame, x_trans[frame], y_trans[frame], xy_trans[frame])
+                print('%s\t%s\t%s\t%s\t%s' % (slc, frame, x_trans[frame], y_trans[frame], xy_trans[frame]))
     fout.close()
 
     if obj_return_value is not None:
@@ -537,7 +646,9 @@ def set_print_cmd(print_cmd):
 
 def generate_xy_trans_lazy(base_directory, fn_out='xy_reg_distance.csv'):
     import glob
-    lst = glob.glob(os.path.join(base_directory, '*_*', '*seggeom_xenc.mat'))
+    #lst = glob.glob(os.path.join(base_directory, '*_*', '*seggeom_xenc.mat'))
+    lst = glob.glob(os.path.join(base_directory, '*_*', '*geom_xenc.mat'))
+    lst += glob.glob(os.path.join(base_directory, '*_*', '*geom_xenc.mat0GenericAffine.mat'))
 
     def extract_mbgroup_slice(filename):
         group_dn, fn = filename.split(os.sep)[-2:]
@@ -552,15 +663,20 @@ def generate_xy_trans_lazy(base_directory, fn_out='xy_reg_distance.csv'):
         except:
             return None
         return (group, frame, filename),
-    
+
     lst_g_f_fn = [ ext for filename in lst for ext in extract_mbgroup_slice(filename) if ext is not None ]
     lst_g_f_fn.sort()
 
     with open(fn_out, 'w') as fout:
         fout.write('%s,%s,%s,%s,%s\n' % ('mbgroup', 'frame', 'x_trans', 'y_trans', 'distance'))
-        print 'Translation > 2.0 mm:'
-        print '%s\t%s\t%s\t%s\t%s' % ('mbgroup', 'frame', 'x_trans', 'y_trans', 'distance')
+        print('Translation > 2.0 mm:')
+        print('%s\t%s\t%s\t%s\t%s' % ('mbgroup', 'frame', 'x_trans', 'y_trans', 'distance'))
         for (group, frame, filename) in lst_g_f_fn:
+            if 'GenericAffine' in filename:
+                tempfilename = filename + '.txt'
+                run_command('ConvertTransformFile 3 %s %s --hm' % (filename, tempfilename), print_cmd=False)
+                filename = tempfilename
+
             with open(filename) as fin:
                 x = float(fin.readline().strip().split()[-1])
                 y = float(fin.readline().strip().split()[-1])
@@ -570,19 +686,22 @@ def generate_xy_trans_lazy(base_directory, fn_out='xy_reg_distance.csv'):
 
             fout.write('%s,%s,%s,%s,%s\n' % (group, frame, x_trans, y_trans, xy_trans))
             if xy_trans > 2.0:
-                print '%s\t%s\t%s\t%s\t%s' % (group, frame, x_trans, y_trans, xy_trans)
+                print('%s\t%s\t%s\t%s\t%s' % (group, frame, x_trans, y_trans, xy_trans))
 
 
 def usage():
     sys.stderr.write('Usage: %s filename.params\n' % os.path.basename(sys.argv[0]))
+    sys.stderr.write('Usage: %s filename.params slice_num_1 slice_num_2 ...\n' % os.path.basename(sys.argv[0]))
     sys.stderr.write('Usage: %s --xytrans base_directory [output_filename=xy_reg_distance.csv]\n' % os.path.basename(sys.argv[0]))
+    sys.stderr.write('Usage: %s --applywarp filename.params\n' % os.path.basename(sys.argv[0]))
+
 
 if __name__ == '__main__':
     # start
     if len(sys.argv) < 2:
         usage()
         sys.exit(-1)
-    
+
     if sys.argv[1][:2] == '--':
         if sys.argv[1] == '--xytrans':
             if len(sys.argv) > 3:
@@ -592,16 +711,24 @@ if __name__ == '__main__':
             else:
                 usage()
                 sys.exit(-1)
+        elif sys.argv[1] == '--applywarp':
+            if len(sys.argv) < 3:
+                usage()
+                sys.exit(-1)
+            filename = sys.argv[2]
+            print('## Load a param file')
+            param = Parameter_reg2d(paramfile=filename)
+            run_applywarp(param)
 
     else:
         filename = sys.argv[1]
-        print '## Load a param file'
+        print('## Load a param file')
         param = Parameter_reg2d(paramfile=filename)
         #param = Param('CSPV032_dwi1_qa.params')
         #param.set_multiband(2)
 
         sub_slices = None if len(sys.argv) == 2 else [int(s) for s in sys.argv[2:]]
-        print 'sub_slices:', sub_slices
+        print('sub_slices:', sub_slices)
         run_registration(param, sub_slices=sub_slices)
 
 

@@ -1,14 +1,23 @@
 #!/usr/bin/env python
 
-from Tkinter import Tk, Entry, TOP, BOTH, RIGHT, RAISED, X, LEFT, N, E, W, S, EW, NS, NSEW, RIDGE, Toplevel
-from Tkinter import Grid, BooleanVar, Spinbox
-from ttk import Frame, Button, Style, Label, Entry, Checkbutton
-import tkFileDialog
-import tkMessageBox
+import sys
+
+if sys.version_info[0] < 3:
+    from Tkinter import Tk, Entry, TOP, BOTH, RIGHT, RAISED, X, LEFT, N, E, W, S, EW, NS, NSEW, RIDGE, Toplevel
+    from Tkinter import Grid, BooleanVar, Spinbox
+    from ttk import Frame, Button, Style, Label, Entry, Checkbutton
+    import tkFileDialog
+    import tkMessageBox
+else:
+    from tkinter import Tk, Entry, TOP, BOTH, RIGHT, RAISED, X, LEFT, N, E, W, S, EW, NS, NSEW, RIDGE, Toplevel
+    from tkinter import Grid, BooleanVar, Spinbox
+    from tkinter.ttk import Frame, Button, Style, Label, Entry, Checkbutton
+    import tkinter.filedialog as tkFileDialog
+    import tkinter.messagebox as tkMessageBox
+
 import prepare_dwi_gui
 from dwi_utils import extname, filename_wo_ext, run_command, generate_dti_maps, create_md_mask, calculate_voxel_values
 import os
-import sys
 import parameter
 import time
 import spine_reg
@@ -40,7 +49,7 @@ class SpineRegGui(Frame):
 
     def init_variable(self):
         #self.txt_multiband.insert(0, '2')
-        self.reset_entry(self.spin_multiband, 2)
+        self.reset_entry(self.spin_multiband, 0)
         #self.txt_nitr.insert(0, '3')
         self.reset_entry(self.spin_nitr, 3)
         self.chk_nosearch.invoke()
@@ -182,7 +191,7 @@ class SpineRegGui(Frame):
         else:
             fn = filename
         if os.path.isfile(fn):
-            print 'Reading %s' % fn
+            print('Reading %s' % fn)
             self.param.read(fn)
             self.update_text_from_param()
             self.reset_entry(self.txt_param, fn)
@@ -409,7 +418,7 @@ class SpineRegGui(Frame):
         self.txt_dti_outlier = Entry(self); self.txt_dti_outlier.grid(row=i, column=1, sticky=EW)
         btn_dti_outlier = Button(self, text='...', width=dddWidth, command=lambda:self.filenameDialog_text(self.txt_dti_outlier))
         btn_dti_outlier.grid(row=i, column=2, sticky=W)
-        btn_dti_maps_itr = Button(self, text='Generate DTI maps', command=lambda:self.run_generate_dti_maps(outlier=True)); btn_dti_maps_itr.grid(row=i, column=4, columnspan=2, sticky=EW)
+        btn_dti_maps_itr = Button(self, text='Generate DTI maps', command=lambda:self.run_generate_dti_maps(outlier=self.txt_dti_outlier.get())); btn_dti_maps_itr.grid(row=i, column=4, columnspan=2, sticky=EW)
 
         #i += 1
         #Label(self, text='DWI'          , width=labelWidth).grid(row=i, column=0)
@@ -496,7 +505,7 @@ class SpineRegGui(Frame):
 
         if fl != '':
             #text = self.readFile(fl)
-            print fl
+            print(fl)
 
     def gen_eddy_outputname(self):
         fn = self.txt_output_eddy.get()
@@ -581,7 +590,7 @@ class SpineRegGui(Frame):
         cmd = ' '.join(topup_command)
         append_text(self.log, cmd, 'run_topup')
         run_command(cmd)
-        print 'Done: TOPUP'
+        print('Done: TOPUP')
 
         tkMessageBox.showinfo(self.title, 'Done: TOPUP')
 
@@ -610,7 +619,7 @@ class SpineRegGui(Frame):
         cmd = ' '.join(eddy_command)
         append_text(self.log, cmd, 'run_eddy')
         run_command(cmd)
-        print 'Done: Eddy'
+        print('Done: Eddy')
 
         self.reset_entry(self.txt_dwi_eddy, self.txt_output_eddy.get())
         tkMessageBox.showinfo(self.title, 'Done: EDDY')
@@ -661,7 +670,7 @@ class SpineRegGui(Frame):
         fn_out = spine_reg.run_registration(param_2d, sub_slices=sub_slices)
         self.reset_entry(self.txt_dwi_dti, fn_out)
         os.chdir(self.txt_working.get())
-        print 'Done: XY-Reg'
+        print('Done: XY-Reg')
         tkMessageBox.showinfo(self.title, 'Done: XY-registration')
 
     def run_applywarp(self):
@@ -673,7 +682,7 @@ class SpineRegGui(Frame):
         spine_reg.set_print_cmd(os.path.join(self.txt_working.get(), self.prefix() + 'xy_reg_cmd'))
         fn_out = spine_reg.run_applywarp(param_2d)
         self.reset_entry(self.txt_dwi_dti, fn_out)
-        print 'Done: Applywarp'
+        print('Done: Applywarp')
         tkMessageBox.showinfo(self.title, 'Done: Applywarp')
 
     def run_xy_reg_outlier(self, param_2d=None):
@@ -688,7 +697,7 @@ class SpineRegGui(Frame):
         spine_reg.generate_xy_trans(param_2d)
         os.chdir(self.txt_working.get())
 
-        print 'Done: XY-Reg outlier calculation'
+        print('Done: XY-Reg outlier calculation')
 
     def run_generate_dti_maps(self, outlier=False):
         cmd = 'generate_dti_maps(%s)' % (', '.join([self.txt_dwi_dti.get(),
@@ -699,7 +708,7 @@ class SpineRegGui(Frame):
                                                     'outlier=%s' % outlier]))
         append_text(self.log, cmd, 'run_generate_dti_maps')
         fn_out = generate_dti_maps(self.txt_dwi_dti.get(), bval_bvec=None, bval=os.path.join(self.txt_working.get(), self.txt_bval.get()), bvec=os.path.join(self.txt_working.get(), self.txt_bvec.get()), prefix=self.prefix(), outlier=outlier)
-        print 'Done: Generate DTI maps'
+        print('Done: Generate DTI maps')
 
         self.reset_entry(self.txt_dti_value, fn_out)
         tkMessageBox.showinfo(self.title, 'Done: Generating DTI maps')
@@ -716,7 +725,7 @@ class SpineRegGui(Frame):
             fn_md = filename_wo_ext(self.txt_dwi_dti.get()) + '_dti_MD.nii.gz'
 
         fn_mask = create_md_mask(os.path.join(working, fn_md), fn_out=None, thr_min=0.1, thr_max=1.1)
-        print 'Done: Making MD mask'
+        print('Done: Making MD mask')
 
         self.reset_entry(self.txt_md_mask, os.path.basename(fn_mask))
         #tkMessageBox.showinfo(self.title, 'Done: MD mask')
@@ -733,7 +742,7 @@ class SpineRegGui(Frame):
         if filename_csv == '':
             filename_csv = filename_wo_ext(filename) + '.csv'
 
-        print filename, filename_roi, filename_csv
+        print(filename, filename_roi, filename_csv)
 
         app = outlier_4dfp_gui.Outlier4dfp(root, filename=filename, filename_roi=filename_roi, filename_csv=filename_csv, dirname=working, obj_return_value=self.txt_dti_outlier)
         root.mainloop()
@@ -751,7 +760,7 @@ class SpineRegGui(Frame):
 
         value_matrix = calculate_voxel_values(filenames, filename_roi, filename_csv=filename_csv)
 
-        print 'Done: Getting DTI values'
+        print('Done: Getting DTI values')
         #tkMessageBox.showinfo(self.title, 'Done: DTI values')
 
 def main():

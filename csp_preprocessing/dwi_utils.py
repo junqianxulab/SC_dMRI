@@ -21,7 +21,7 @@ def append_log(filename, log):
 
 def run_command(cmd, print_cmd = True):
     if print_cmd is True:
-        print '>> %s' % cmd
+        print('>> %s' % cmd)
     elif type(print_cmd) == type('') and print_cmd != '':
         append_log(print_cmd, cmd)
 
@@ -84,10 +84,10 @@ def create_acqparams(fn_output, lst_fn, direction=None, total_readout_time=total
 
             if appa[i]:
                 f.write('0 -1 0 %s\n' % total_readout_time)
-                print '%s: AP' % filename
+                print('%s: AP' % filename)
             else:
                 f.write('0 1 0 %s\n' % total_readout_time)
-                print '%s: PA' % filename
+                print('%s: PA' % filename)
 
 def create_index(fn_output, lst_fn_b0, lst_fn_dw, direction_b0, direction_dw):
     index = []
@@ -114,7 +114,7 @@ def create_index(fn_output, lst_fn_b0, lst_fn_dw, direction_b0, direction_dw):
             i_dw += 1
             index.append( ('%s ' % i_b0) * img.shape[3] )
 
-            print '%s %s: %s' % (i_b0, direction, img.shape[3])
+            print('%s %s: %s' % (i_b0, direction, img.shape[3]))
 
         else:
             i_b0 += 1
@@ -170,7 +170,7 @@ def name_inc_find_last(base, search_dir=False):
 
     return fn
 
-def generate_dti_maps(filename, bval_bvec=None, bval=None, bvec=None, prefix='', outlier=False):
+def generate_dti_maps(filename, bval_bvec=None, bval=None, bvec=None, prefix='', outlier=None):
     if bval_bvec is None and (bval is None or bvec is None):
         sys.stderr.write('Either of bval_bvec or (bval and bvec) should be given\n')
         return
@@ -188,16 +188,16 @@ def generate_dti_maps(filename, bval_bvec=None, bval=None, bvec=None, prefix='',
     fn_out = fn_img + '_dti'
     fn_res = fn_img + '_res'
 
-    if outlier:
+    if outlier is not None and outlier is not False:
         name_inc = name_inc_find_last(fn_img + '_itr', search_dir=True)
         os.mkdir(name_inc)
         run_command('mv %s_dti* %s' % (fn_img, name_inc))
         run_command('mv %s_res* %s' % (fn_img, name_inc))
         run_command('mv %s/*mask.nii.gz ./' % (name_inc))
 
-    if outlier:
+    if outlier is not None and outlier is not False:
         res_command = 'G'
-        res_post = 'badenc.dat'
+        res_post = outlier if type(outlier) == type('') else 'badenc.dat'
     else:
         res_command = ''
         res_post = ''
@@ -240,8 +240,8 @@ def create_md_mask(fn_md, fn_out=None, thr_min=0.1, thr_max=1.1):
 
     # Generate mask
     s = [[0,1,0], [1,1,1], [0,1,0]]
-    c_x = dat_md.shape[0] / 2
-    c_y = dat_md.shape[1] / 2
+    c_x = int(dat_md.shape[0] / 2)
+    c_y = int(dat_md.shape[1] / 2)
     max_dist = c_x + c_y
     dat_mask_volume = np.zeros(dat_md.shape, dtype=np.int8)
     dat_roi_volume = dat_md.copy()
