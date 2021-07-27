@@ -49,7 +49,7 @@ class ImshowMplCanvas(MplCanvas):
     """Simple canvas with a sine plot."""
     def drawData(self, data, mask, drawMask):
         shape = (data.shape[1], data.shape[0], 3)
-        dataRGB = np.ndarray(shape, dtype=np.float16)
+        dataRGB = np.ndarray(shape, dtype=np.float32)
         dataRGB[:,:,0] = dataRGB[:,:,1] = dataRGB[:,:,2] = data.T.copy()
         dataRGB /= dataRGB.max()
 

@@ -191,7 +191,8 @@ def generate_dti_maps(filename, bval_bvec=None, bval=None, bvec=None, prefix='',
     if outlier:
         name_inc = name_inc_find_last(fn_img + '_itr', search_dir=True)
         os.mkdir(name_inc)
-        run_command('mv %s_[dr]* %s' % (fn_img, name_inc))
+        run_command('mv %s_dti* %s' % (fn_img, name_inc))
+        run_command('mv %s_res* %s' % (fn_img, name_inc))
         run_command('mv %s/*mask.nii.gz ./' % (name_inc))
 
     if outlier:

@@ -1,0 +1,14 @@
+fn_img = SujectID_AP_3merged.nii.gz
+fn_mas = SujectID_AP_3merged_mask.nii.gz
+fn_bval = SubjectID_AP_3merged.bval
+multiband = 0
+schedule = -schedule /your_diectory/gui_spine_reg/csp_reg/xytrans.sch
+noresample = -noresample
+nosearch = -nosearch
+nitr = 3
+b0_threshold = 90
+thr_high_bval = 400
+dir_slice = True
+max_cpu = 1
+sleep_time = 30
+verbose = True

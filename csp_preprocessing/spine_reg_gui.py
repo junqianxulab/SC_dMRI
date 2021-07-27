@@ -45,6 +45,7 @@ class SpineRegGui(Frame):
         self.reset_entry(self.spin_nitr, 3)
         self.chk_nosearch.invoke()
         self.reset_entry(self.txt_b0_threshold, 90)
+        self.reset_entry(self.txt_high_b_threshold, 400)
 
         dirname = os.path.dirname(os.path.realpath(__file__))
         self.reset_entry(self.txt_topup_config, os.path.join(dirname, 'b02b0_ON_1_3mm.cnf'))
@@ -100,6 +101,7 @@ class SpineRegGui(Frame):
         self.param.fn_bval              = self.txt_bval.get()
         self.param.fn_bvec              = self.txt_bvec.get()
         self.param.b0_threshold         = self.txt_b0_threshold.get()
+        #self.param.b0_threshold         = self.txt_b0_threshold.get() #FIXME
 
         self.param.topup_app            = self.txt_topup_app.get()
         self.param.topup_config         = self.txt_topup_config.get()
@@ -120,6 +122,8 @@ class SpineRegGui(Frame):
         self.param.fn_dwi_eddy          = self.txt_dwi_eddy.get()
         self.param.fn_reg_mask          = self.txt_reg_mask.get()
         self.param.fn_reg_outlier       = self.txt_reg_outlier.get()
+        self.param.fn_reg_slices        = self.txt_reg_slices.get()
+
         self.param.fn_reg_out           = self.txt_output_reg.get()
         self.param.fn_dti               = self.txt_dti.get()
         self.param.fn_dwi_dti           = self.txt_dwi_dti.get()
@@ -159,6 +163,7 @@ class SpineRegGui(Frame):
         self.reset_entry(self.txt_dwi_eddy        , self.param.fn_dwi_eddy)
         self.reset_entry(self.txt_reg_mask        , self.param.fn_reg_mask)
         self.reset_entry(self.txt_reg_outlier     , self.param.fn_reg_outlier)
+        self.reset_entry(self.txt_reg_slices      , self.param.fn_reg_slices)
         self.reset_entry(self.txt_output_reg      , self.param.fn_reg_out)
                                                         
         self.reset_entry(self.txt_dwi_dti         , self.param.fn_dwi_dti)
@@ -243,13 +248,16 @@ class SpineRegGui(Frame):
         btn_bval = Button(frm_prepa, text='...', width=dddWidth, command=lambda:self.filenameDialog_text(self.txt_bval));
         btn_bval.grid(row=ii, column=2, sticky=W)
 
-        Label(frm_prepa, text='B0 threshold').grid(row=ii, column=3, sticky=E)
+        Label(frm_prepa, text='b0 threshold').grid(row=ii, column=3, sticky=E)
         self.txt_b0_threshold = Entry(frm_prepa, width=10); self.txt_b0_threshold.grid(row=ii, column=4)
 
         ii += 1; Label(frm_prepa, text='bvec'         , width=labelWidth).grid(row=ii, column=0)
         self.txt_bvec = Entry(frm_prepa); self.txt_bvec.grid(row=ii, column=1, sticky=EW)
         btn_bvec = Button(frm_prepa, text='...', width=dddWidth, command=lambda:self.filenameDialog_text(self.txt_bvec));
         btn_bvec.grid(row=ii, column=2, sticky=W)
+
+        Label(frm_prepa, text='high b threshold').grid(row=ii, column=3, sticky=E)
+        self.txt_high_b_threshold = Entry(frm_prepa, width=10); self.txt_high_b_threshold.grid(row=ii, column=4)
 
         frm_prepa.grid_columnconfigure(1, weight=1)
         frm_prepa.grid(row=i, rowspan=ii+1, column=0, columnspan=6, sticky=NSEW)
@@ -355,6 +363,9 @@ class SpineRegGui(Frame):
         btn_reg_mask.grid(row=i, column=2, sticky=W)
         btn_reg_mask_make = Button(self, text='Make', command=lambda:self.make_mask(self.txt_dwi_eddy.get(), rtn=self.txt_reg_mask)); btn_reg_mask_make.grid(row=i, column=3)
 
+        i += 1; Label(self, text='Slices'      , width=labelWidth).grid(row=i, column=0)
+        self.txt_reg_slices = Entry(self); self.txt_reg_slices.grid(row=i, column=1, sticky=EW)
+
         i += 1; Label(self, text='Outlier'      , width=labelWidth).grid(row=i, column=0)
         self.txt_reg_outlier = Entry(self); self.txt_reg_outlier.grid(row=i, column=1, sticky=EW)
         btn_reg_outlier = Button(self, text='...', width=dddWidth, command=lambda:self.filenameDialog_text(self.txt_reg_outlier))
@@ -373,7 +384,7 @@ class SpineRegGui(Frame):
         # DTI
         i += 1; Label(self, text='  DTI map with outlier rejection').grid(row=i, column=0, columnspan=2, sticky=W)
 
-        i += 1; Label(self, text='DWI'          , width=labelWidth).grid(row=i, column=0)
+        i += 1; Label(self, text='DWI_reg'       , width=labelWidth).grid(row=i, column=0)
         self.txt_dwi_dti = Entry(self); self.txt_dwi_dti.grid(row=i, column=1, sticky=EW)
         btn_dwi_dti = Button(self, text='...', width=dddWidth, command=lambda:self.filenameDialog_text(self.txt_dwi_dti))
         btn_dwi_dti.grid(row=i, column=2, sticky=W)
@@ -636,8 +647,18 @@ class SpineRegGui(Frame):
 
         cmd = '\n'.join([str(vars(param_2d)), 'spine_reg.run_registration(param_2d)'])
         append_text(self.log, cmd, 'run_xy_reg')
-
-        fn_out = spine_reg.run_registration(param_2d)
+        
+        sub_slices = self.txt_reg_slices.get()
+        if sub_slices != '':
+            try:
+                slices = [value.strip() for value in sub_slices.strip().split(',')]
+                slices = [int(value) for value in slices if value != '']
+                sub_slices = slices
+            except:
+                sub_slices = None
+        else:
+            sub_slices = None
+        fn_out = spine_reg.run_registration(param_2d, sub_slices=sub_slices)
         self.reset_entry(self.txt_dwi_dti, fn_out)
         os.chdir(self.txt_working.get())
         print 'Done: XY-Reg'
