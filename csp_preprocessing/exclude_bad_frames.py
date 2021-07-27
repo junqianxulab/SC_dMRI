@@ -22,14 +22,14 @@ import subprocess
 
 def run_command(cmd, print_cmd = True):
     if print_cmd:
-        print '>> %s' % cmd
+        print('>> %s' % cmd)
 
     p = subprocess.call(cmd, shell=True)
     return p
 
 def run_command_with_prefix(cmd, print_cmd = True, prefix="export FSLOUTPUTTYPE='NIFTI' ; "):
     if print_cmd is True:
-        print '>> %s' % cmd
+        print('>> %s' % cmd)
 
     p = subprocess.call(prefix + cmd, shell=True)
     return p

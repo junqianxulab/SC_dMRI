@@ -10,11 +10,20 @@ import scipy.ndimage as ndimage
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg as FigureCanvas
 from matplotlib.figure import Figure
 
-from Tkinter import Tk, Entry, TOP, BOTH, RAISED, N, E, W, S, EW, NS, NW, NSEW
-from Tkinter import RIDGE, TRUE, FALSE, VERTICAL, LEFT, RIGHT, X, Y, BOTTOM
-from Tkinter import Grid, BooleanVar, StringVar, Canvas, Scrollbar, Spinbox
-from ttk import Frame, Button, Style, Label, Entry, Checkbutton, Radiobutton
-import tkFileDialog
+import sys
+
+if sys.version_info[0] < 3:
+    from Tkinter import Tk, Entry, TOP, BOTH, RAISED, N, E, W, S, EW, NS, NW, NSEW
+    from Tkinter import RIDGE, TRUE, FALSE, VERTICAL, LEFT, RIGHT, X, Y, BOTTOM
+    from Tkinter import Grid, BooleanVar, StringVar, Canvas, Scrollbar, Spinbox
+    from ttk import Frame, Button, Style, Label, Entry, Checkbutton, Radiobutton
+    import tkFileDialog
+else:
+    from tkinter import Tk, Entry, TOP, BOTH, RAISED, N, E, W, S, EW, NS, NW, NSEW
+    from tkinter import RIDGE, TRUE, FALSE, VERTICAL, LEFT, RIGHT, X, Y, BOTTOM
+    from tkinter import Grid, BooleanVar, StringVar, Canvas, Scrollbar, Spinbox
+    from tkinter.ttk import Frame, Button, Style, Label, Entry, Checkbutton, Radiobutton
+    import tkinter.filedialog as tkFileDialog
 
 import create_mask
 import nibabel as nib
@@ -139,7 +148,7 @@ class CreateMask(Frame):
 
         num_col = 3
         num_row = 6
-        for col in range(self.shape[2]/num_row):
+        for col in range(int(self.shape[2]/num_row)):
             for k in range(num_row):
                 ind = col*num_row + k
                 if ind >= self.shape[2]:
@@ -172,7 +181,7 @@ class CreateMask(Frame):
 
 
     def saveMask(self):
-        print 'save mask to %s' % self.filename_mask
+        print('save mask to %s' % self.filename_mask)
         if self.mask4d:
             img_out = nib.Nifti1Image(self.mask_base, self.img.get_affine(), self.img.get_header())
         else:
@@ -203,7 +212,7 @@ class CreateMask(Frame):
         bvalFilename = tkFileDialog.askopenfilename()
         if bvalFilename:
             b0frames = parameter.get_b0_from_bval(bvalFilename)
-            print self.filename, b0frames
+            print(self.filename, b0frames)
             filename, filename_fltd, filename_mask = create_mask.set_filenames(self.filename)
             create_mask.make_base_image(filename, filename_fltd+'.nii.gz', b0frames)
 

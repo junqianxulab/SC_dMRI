@@ -128,9 +128,9 @@ def set_filenames(filename):
 
 def calculate_com(dat, zooms):
     shape = dat.shape
-    dxy = min([shape[0], shape[1]]) / 2
-    range_x = (shape[0]/2 - dxy, shape[0]/2 + dxy)
-    range_y = (shape[1]/2 - dxy, shape[1]/2 + dxy)
+    dxy = int(min([shape[0], shape[1]]) / 2)
+    range_x = int(shape[0]/2 - dxy, shape[0]/2 + dxy)
+    range_y = int(shape[1]/2 - dxy, shape[1]/2 + dxy)
 
     dx_mm = 15
     dy_mm = 15
@@ -183,9 +183,9 @@ def show_stat(dat_th):
         inside  = np.array([dat[ij[0], ij[1], k] for ij in done])
         outside = np.array([dat[ij[0], ij[1], k] for ij in done_expand if ij not in done])
 
-        print ' #mask voxel: %s, #outside voxel: %s' % (len(inside), len(outside))
-        print ' Inside mask:  mean=%s, std=%s' % (inside.mean(), inside.std())
-        print ' Outside mask: mean=%s, std=%s' % (outside.mean(), outside.std())
+        print(' #mask voxel: %s, #outside voxel: %s' % (len(inside), len(outside)))
+        print(' Inside mask:  mean=%s, std=%s' % (inside.mean(), inside.std()))
+        print(' Outside mask: mean=%s, std=%s' % (outside.mean(), outside.std()))
 
 def mask_from_threshold(com_x, com_y, threshold, dat, dat_th, k):
     done = dilate_threshold([(com_x, com_y)], threshold, dat, k)
@@ -198,11 +198,11 @@ if __name__ == '__main__':
     if len(sys.argv) > 1:
         filename, filename_fltd, filename_mask = set_filenames(sys.argv[1])
     else:
-        print 'Usage: %s filename b0frames(1st frame is 0)' % sys.argv[0]
+        print('Usage: %s filename b0frames(1st frame is 0)' % sys.argv[0])
         sys.exit(-1)
 
-    print 'Input: %s' % filename
-    print 'Output: %s' % filename_mask
+    print('Input: %s' % filename)
+    print('Output: %s' % filename_mask)
 
     make_base_image(filename, filename_fltd+'.nii.gz', sys.argv[2:])
 
@@ -230,7 +230,7 @@ if __name__ == '__main__':
         threshold = np.mean(dat_subflt) + np.std(dat_subflt)
         mask_from_threshold(com_x[k], com_y[k], threshold, dat, dat_th, k)
 
-        print 'slice: %s, center = (%s, %s) voxel, threshold = %s' % (k, com_x[k], com_y[k], threshold)
+        print('slice: %s, center = (%s, %s) voxel, threshold = %s' % (k, com_x[k], com_y[k], threshold))
 
     img_out = nib.Nifti1Image(dat_th, img.get_affine(), hdr)
     nib.save(img_out, filename_mask)

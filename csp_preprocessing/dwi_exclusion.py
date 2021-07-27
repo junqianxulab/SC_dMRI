@@ -37,10 +37,10 @@ if __name__ == '__main__':
 
     ag = parser.parse_args()
 
-    print ag
+    print(ag)
     # if exclusion file exists,
     if os.path.isfile(ag.fn_exc) and ag.overwrite is False and ag.modify is False:
-        s = raw_input('%s exists. [o]verwrite/[m]odify/e[x]it? ' % ag.fn_exc)
+        s = input('%s exists. [o]verwrite/[m]odify/e[x]it? ' % ag.fn_exc)
         if s[0].lower() == 'o':
             ag.overwrite = True
         elif s[0].lower() == 'm':
@@ -68,7 +68,7 @@ if __name__ == '__main__':
         n_slice, n_frame = img.shape[2:]
         bad_frames = [ [ '0' for f in range(n_frame) ] for s in range(n_slice) ]
 
-    print '# slices = %s, # frames = %s' % (n_slice, n_frame)
+    print('# slices = %s, # frames = %s' % (n_slice, n_frame))
 
     with open(ag.fn_csv) as fin:
         line = fin.readline() # header

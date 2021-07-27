@@ -43,9 +43,9 @@ class Outlier4dfp(Frame):
         # check filenames
         if filename is None or not os.path.isfile(filename):
             if dirname is not None:
-                filename = tkFileDialog.askopenfilename(initialdir=dirname)
+                filename = tkFileDialog.askopenfilename(initialdir=dirname, title='res file')
             else:
-                filename = tkFileDialog.askopenfilename()
+                filename = tkFileDialog.askopenfilename(title='res file')
 
         if not os.path.isfile(filename):
             parent.destroy()
@@ -53,9 +53,9 @@ class Outlier4dfp(Frame):
 
         if filename_roi is None or not os.path.isfile(filename_roi):
             if dirname is not None:
-                filename_roi = tkFileDialog.askopenfilename(initialdir=dirname)
+                filename_roi = tkFileDialog.askopenfilename(initialdir=dirname, title='mask file')
             else:
-                filename_roi = tkFileDialog.askopenfilename()
+                filename_roi = tkFileDialog.askopenfilename(title='mask file')
 
         if not os.path.isfile(filename_roi):
             parent.destroy()
@@ -67,7 +67,8 @@ class Outlier4dfp(Frame):
             self.dirname = dirname
 
         if filename_csv is None:
-            filename_csv = os.path.join(self.dirname, filename_wo_ext(os.path.basename(filename)) + '.csv')
+            #filename_csv = os.path.join(self.dirname, filename_wo_ext(os.path.basename(filename)) + '.csv')
+            filename_csv = os.path.join(self.dirname, 'badenc.dat')
 
         self.filename = filename
         self.filename_roi = filename_roi
@@ -136,7 +137,9 @@ class Outlier4dfp(Frame):
 
 
     def click_check(self, f):
-        value =  self.lst_checkbox_slices_values[f].get()
+        #value =  self.lst_checkbox_slices_values[f].get()
+        value =  self.badenc[self.z, f]
+        #print type(value), value
         if value == 1:
             value = 0
         else:
@@ -155,12 +158,13 @@ class Outlier4dfp(Frame):
             chkbox = self.lst_checkbox_slices_values[i]
             # FIXME
             # avail chkbox
-            if self.prev[z,i] > 0 or  self.badenc[z,i] > 0:
-                to_check = True
+            #if self.prev[z,i] > 0 or  self.badenc[z,i] > 0:
+            if self.badenc[z,i] > 0:
+                #to_check = True
                 to_check = 1
                 self.lst_checkbox_slices[i].select()
             else:
-                to_check = False
+                #to_check = False
                 to_check = 0
                 self.lst_checkbox_slices[i].deselect()
 
@@ -188,10 +192,11 @@ class Outlier4dfp(Frame):
         z = self.z
         df = self.shape[3]
 
-        print z
+        print 'z: ', z
         #r = self.frame_graph.axes.boxplot(self.values.T)
 
-        sorted_values = np.sort(self.values[z,:])
+        #sorted_values = np.sort(self.values[z,:][self.values[z,:]>0])
+        sorted_values = np.sort(self.values[z,:][self.prev[z,:]==0])
         q1 = sorted_values[df/4]
         q2 = sorted_values[df/2]
         q3 = sorted_values[df-df/4]
@@ -202,8 +207,10 @@ class Outlier4dfp(Frame):
         of2 = q3 + 3*iqr
 
         xx = np.arange(df)
-        z_mean = self.values[z,:].mean()
-        z_std  = self.values[z,:].std()
+        z_mean = sorted_values.mean()
+        z_std  = sorted_values.std()
+        #z_mean = self.values[z,:].mean()
+        #z_std  = self.values[z,:].std()
         #z_min  = self.values[z,:].min()
         #z_max  = self.values[z,:].max()
 
@@ -237,27 +244,40 @@ class Outlier4dfp(Frame):
         if filename == '':
             return
 
+        #if os.path.basename(filename) == 'badenc.dat':
         with open(filename) as f:
-            values = [ [ int(tmp) for tmp in line.strip().split(',') ] for line in f.readlines() ]
+            dz, df = [int(value) for value in f.readline().strip().split()]
+            for z in range(dz):
+                row = [int(value) for value in f.readline().strip().split()]
+                self.prev[z,:] = row
+                self.badenc[z,:] = row
 
-        self.prev[:,:] = values
+        #else:
+        #    with open(filename) as f:
+        #        values = [ [ int(tmp) for tmp in line.strip().split() ] for line in f.readlines() ]
+        #    self.prev[:,:] = values
+
+        self.change_z()
 
     def run_save(self):
-        filename = tkFileDialog.asksaveasfilename(initialdir=os.path.dirname(self.filename_csv), initialfile=os.path.basename(self.filename_csv))
+        filename = tkFileDialog.asksaveasfilename(initialdir=os.path.dirname(self.filename_csv),
+                title='badenc.dat',
+                initialfile='badenc.dat')
         if filename == '':
             return
 
         dz = self.shape[2]
         df = self.shape[-1]
 
-        badenc = self.badenc.copy()
-        badenc[self.prev > 0] = 1
+        badenc = self.badenc
+        #badenc[self.prev > 0] = 1
 
-        with open(filename, 'w') as f:
-            for z in range(dz):
-                f.write('%s\n' % (','.join([str(tmp) for tmp in badenc[z,:]])))
+        #with open(filename, 'w') as f:
+        #    for z in range(dz):
+        #        f.write('%s\n' % (','.join([str(tmp) for tmp in badenc[z,:]])))
 
-        with open(os.path.join(self.dirname, 'badenc.dat'), 'wb') as fout:
+        #with open(os.path.join(self.dirname, 'badenc.dat'), 'wb') as fout:
+        with open(filename, 'w') as fout:
             if False:
                 for z in range(dz):
                     row = struct.pack('i'*df, *badenc[z,:])
@@ -282,7 +302,7 @@ class Outlier4dfp(Frame):
         self.spin_z.pack(side=LEFT)
         self.make_checkbox(self.frame_bottom, width=4)
 
-        Label(self.frame_top, text='   CSV').pack(side=LEFT)
+        Label(self.frame_top, text='   badenc').pack(side=LEFT)
         self.txt_filename_csv = Entry(self.frame_top)
         self.txt_filename_csv.pack(side=LEFT)
         self.button_read = Button(self.frame_top, text='Read', command=self.run_read)

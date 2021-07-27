@@ -16,7 +16,7 @@ if len(sys.argv) > 5:
     n_dwi = int(sys.argv[5])
 else:
     import nibabel as nib
-    n_dwi = nib.load(sys.argv[1]).shape[-1] / n_frame
+    n_dwi = int(nib.load(sys.argv[1]).shape[-1] / n_frame)
 
 to_extract = [frame_1, frame_2]
 merged_info = [ i%2 for i in range(n_dwi) ]
@@ -25,7 +25,7 @@ merged_frame_to_extract_pairs = [
         i*n_frame + to_extract[merged_info[i]] for i in range(n_dwi)
         ]
 
-print merged_frame_to_extract_pairs
+print(merged_frame_to_extract_pairs)
 
 bn = os.path.basename(fn).split('.')[0]
 

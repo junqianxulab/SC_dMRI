@@ -20,5 +20,5 @@ with open(sys.argv[1] + '.bvec') as f:
 
 for i in range(len(bvals)):
     if -tol < bvecs[2][i] < tol:
-        print i, bvals[i], bvecs[0][i], bvecs[1][i], bvecs[2][i]
+        print(i, bvals[i], bvecs[0][i], bvecs[1][i], bvecs[2][i])
 

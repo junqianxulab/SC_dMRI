@@ -1,8 +1,20 @@
-from Tkinter import Tk, Entry, TOP, BOTH, RAISED, N, E, W, S, EW, NS, NW, NSEW
-from Tkinter import RIDGE, TRUE, FALSE, VERTICAL, LEFT, RIGHT, X, Y
-from Tkinter import Grid, BooleanVar, StringVar, Canvas, Scrollbar
-from ttk import Frame, Button, Style, Label, Entry, Checkbutton, Radiobutton
-import tkFileDialog
+#!/usr/bin/env python
+
+import sys
+
+if sys.version_info[0] < 3:
+    from Tkinter import Tk, Entry, TOP, BOTH, RAISED, N, E, W, S, EW, NS, NW, NSEW
+    from Tkinter import RIDGE, TRUE, FALSE, VERTICAL, LEFT, RIGHT, X, Y
+    from Tkinter import Grid, BooleanVar, StringVar, Canvas, Scrollbar
+    from ttk import Frame, Button, Style, Label, Entry, Checkbutton, Radiobutton
+    import tkFileDialog
+else:
+    from tkinter import Tk, Entry, TOP, BOTH, RAISED, N, E, W, S, EW, NS, NW, NSEW
+    from tkinter import RIDGE, TRUE, FALSE, VERTICAL, LEFT, RIGHT, X, Y
+    from tkinter import Grid, BooleanVar, StringVar, Canvas, Scrollbar
+    from tkinter.ttk import Frame, Button, Style, Label, Entry, Checkbutton, Radiobutton
+    import tkinter.filedialog as tkFileDialog
+
 import os
 import shutil
 from dwi_utils import filename_wo_ext, extname, create_merge, create_acqparams, create_index, abspath_to_relpath, run_command
@@ -477,7 +489,7 @@ class PrepareDWI(Frame):
 
         fn_b0s = [a_pair[1] for a_pair in filenames_b0]
         fn_dws = [a_pair[1] for a_pair in filenames_dw if extname(a_pair[1])[-5:-2] != '.bv']
-        print fn_dws
+        print(fn_dws)
 
         dir_b0s = self.lst_dwi.get_b0_directions()
         dir_dws = self.lst_dwi.get_dw_directions()
@@ -502,7 +514,7 @@ class PrepareDWI(Frame):
         fn_dwi_filenames = os.path.join(dir_out, '%sDWI.txt' % self.prefix())
         self.save_dwi_filenames(fn_dwi_filenames)
 
-        print 'Done'
+        print('Done')
 
         if self.make_param:
             fn_param = os.path.join(dir_out, '%sparams' % self.prefix())
@@ -516,7 +528,7 @@ class PrepareDWI(Frame):
             param.working_dir = dir_out
             param.save(fn_param)
 
-            print 'Saved : %s' % fn_param
+            print('Saved : %s' % fn_param)
 
         if self.return_value is not None:
             self.return_value['subject'] = self.subject()

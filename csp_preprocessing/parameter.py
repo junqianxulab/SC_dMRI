@@ -16,6 +16,10 @@ def create_parser():
     #parser.add_argument('-b0frames', dest='b0frames')
     parser.add_argument('-fn_bval', dest='fn_bval')
     parser.add_argument('-thr_high_bval', dest='thr_high_bval')
+    parser.add_argument('-use_single_image_ref', dest='use_single_image_ref', default=False)
+    parser.add_argument('-smoothing_sigmas', dest='smoothing_sigmas', default='1mm')
+    parser.add_argument('-cost', dest='cost', default='MeanSquares')
+    parser.add_argument('-cost_seggeom_b0geom', dest='cost_seggeom_b0geom', default='MI')
     parser.add_argument('-b0_threshold', dest='b0_threshold')
     parser.add_argument('-schedule', dest='schedule')
     parser.add_argument('-noresample', dest='noresample')
@@ -117,7 +121,7 @@ class Parameter:
 
         self.nosearch = (self.nosearch == True or self.nosearch == 'True')
         self.noresample = (self.noresample == True or self.noresample == 'True')
-        
+
 
     def save(self, filename):
         variables = vars(self)
@@ -137,7 +141,8 @@ class Parameter:
 class Parameter_reg2d:
     def __init__(self, fn_img=None, fn_mas=None, nitr=3, multiband=None, b0frames=None, b0_threshold=90,
                  schedule=None, noresample=False, nosearch=True, dir_slice=True, max_cpu=1, sleep_time=30, verbose=True,
-                 paramfile=None, args=None, param_object=None, thr_high_bval=400):
+                 paramfile=None, args=None, param_object=None, thr_high_bval=400, use_single_image_ref=False,
+                 smoothing_sigmas='1mm', cost='MeanSquares', cost_seggeom_b0geom='MI'):
         '''
         Parameter(
             fn_image=None,
@@ -161,6 +166,10 @@ class Parameter_reg2d:
         self.fn_bval = b0frames
         self.b0_threshold = b0_threshold
         self.thr_high_bval = thr_high_bval
+        self.use_single_image_ref = use_single_image_ref
+        self.smoothing_sigmas = smoothing_sigmas
+        self.cost = cost
+        self.cost_seggeom_b0geom = cost_seggeom_b0geom
         self.schedule = schedule
         self.noresample = noresample
         self.nosearch = nosearch
@@ -168,7 +177,7 @@ class Parameter_reg2d:
         self.max_cpu = max_cpu
         self.sleep_time = sleep_time
         self.verbose = verbose
-      
+
         if paramfile is not None:
             self.read_param(paramfile)
         if args is not None:
@@ -182,7 +191,7 @@ class Parameter_reg2d:
 
         if self.fn_img is not None and self.fn_mas is not None and self.fn_bval is not None:
             self.set_variables()
-        print vars(self)
+        print(vars(self))
         sys.stdout.flush()
 
     def read_parameter_object(self, param_object):
@@ -221,6 +230,10 @@ class Parameter_reg2d:
                     #('b0frames', self.b0frames),
                     ('b0_threshold', self.b0_threshold),
                     ('thr_high_bval', self.thr_high_bval),
+                    ('use_single_image_ref', self.use_single_image_ref),
+                    ('smoothing_sigmas', self.smoothing_sigmas),
+                    ('cost', self.cost),
+                    ('cost_seggeom_b0geom', self.cost_seggeom_b0geom),
                     ('schedule', self.schedule),
                     ('noresample', self.noresample),
                     ('nosearch', self.nosearch),
@@ -247,6 +260,14 @@ class Parameter_reg2d:
         #self.b0frames = b0frames
         self.b0_threshold = int(self.b0_threshold)
         self.thr_high_bval = int(self.thr_high_bval)
+        if not (self.use_single_image_ref is False or self.use_single_image_ref is True):
+            if type(self.use_single_image_ref) == type(''):
+                if self.use_single_image_ref[0].lower() == 't':
+                    self.use_single_image_ref = True
+                else:
+                    self.use_single_image_ref = False
+            else:
+                self.use_single_image_ref = False
 
         if type(self.verbose) == type(''):
             if self.verbose[0].lower() == 't':
@@ -267,11 +288,13 @@ class Parameter_reg2d:
         self.tempdir= 'temp.dir'
         self.tag_frame = 'frame'
         self.tag_xenc = 'xenc'
+        dirname = os.path.dirname(os.path.realpath(__file__))
+        self.identmat_itk = os.path.join(dirname, 'identity_ants.mat')
 
         self.read_fn_img(self.fn_img)
         self.set_multiband(self.multiband)
         if self.multiband > 1:
-            self.ngroup = self.nslice / self.multiband
+            self.ngroup = int(self.nslice / self.multiband)
         else:
             self.ngroup = self.nslice
 
@@ -293,6 +316,28 @@ class Parameter_reg2d:
         if True:
             if os.path.isfile(self.fn_bval):
                 self.b0frames = get_b0_from_bval(self.fn_bval, threshold=self.b0_threshold, return_verbose=False, verbose=self.verbose)
+                self.lowsegframes, self.segframes = set_seg_frames(self.b0frames, self.nvolume, self.fn_bval, thr_high_bval=self.thr_high_bval)
+            elif os.path.basename(self.fn_bval) == 'allb0':
+                shape = nib.load(self.fn_img).shape
+                if shape[-1] < 20:
+                    self.b0frames = range(shape[-1])
+                    self.lowsegframes = []
+                    self.segframes = []
+                else:
+                    self.b0frames = range(int(shape[-1]/2)-5, int(shape[-1]/2)+5)
+                    #self.lowsegframes = [tmp_i for tmp_i in range(shape[-1]) if tmp_i not in self.b0frames]
+                    self.lowsegframes = []
+                    for tmp_i in range(0, int(shape[-1]/2)-5, 20):
+                        if tmp_i+20 > int(shape[-1]/2)-5:
+                            self.lowsegframes[-1] += range(tmp_i, int(shape[-1]/2)-5)
+                        else:
+                            self.lowsegframes.append(range(tmp_i, tmp_i+20))
+                    for tmp_i in range(int(shape[-1]/2)+5, shape[-1], 20):
+                        if tmp_i+20 > shape[-1]:
+                            self.lowsegframes[-1] += range(tmp_i, shape[-1])
+                        else:
+                            self.lowsegframes.append(range(tmp_i, tmp_i+20))
+                    self.segframes = []
             else:
                 sys.stderr.write('fn_bval should be bval filename\n')
                 sys.exit(-1)
@@ -311,7 +356,10 @@ class Parameter_reg2d:
                 sys.exit(-1)
 
         #self.segframes = set_seg_frames(self.b0frames, self.nvolume)
-        self.lowsegframes, self.segframes = set_seg_frames(self.b0frames, self.nvolume, self.fn_bval, thr_high_bval=self.thr_high_bval)
+
+        #moved to after b0frames
+        #self.lowsegframes, self.segframes = set_seg_frames(self.b0frames, self.nvolume, self.fn_bval, thr_high_bval=self.thr_high_bval)
+
         self.lowseglist = range(len(self.lowsegframes))
         self.seglist = range(len(self.segframes))
         self.allframes = range(self.nvolume)
@@ -358,7 +406,6 @@ class Parameter_reg2d:
             self.sleep_time = int(self.sleep_time)
 
         if self.schedule is None:
-            dirname = os.path.dirname(os.path.realpath(__file__))
             fn_schedule = os.path.join(dirname, 'xytrans.sch')
             if not os.path.isfile(fn_schedule):
                 if False:
@@ -394,7 +441,7 @@ class Parameter_reg2d:
         else:
             self.nvolume = shape[2]
             self.nslice = 1
-        
+
         del img
 
     def get_fn_tempmat(self, slc=None, frame=None, seg=None):
@@ -540,20 +587,20 @@ def get_b0_from_bval(filename, threshold=90, return_verbose=False, verbose=True)
 
     fin.close()
     if verbose:
-        print rtn_str
+        print(rtn_str)
     if return_verbose:
         return b0frames, rtn_str
     return b0frames
 
 def set_seg_frames(b0frames, nvolume, fn_bval = None, thr_high_bval=400):
     if fn_bval is None:
-        print 'fn_bval is None'
+        print('fn_bval is None')
         thr_high_bval = 0
         bvals = [100 for i in range(nvolume)]
     else:
         with open(fn_bval) as fin:
             bvals = [int(val) for val in fin.readline().strip().split()]
-            print 'bvals for segs:', bvals
+            print('bvals for segs:', bvals)
 
     low_b = []
     high_b = []
@@ -613,7 +660,7 @@ def get_frames_fram_bval(filename, threshold_min=90, threshold_max=400, return_v
 
     fin.close()
     if verbose:
-        print rtn_str
+        print(rtn_str)
     if return_verbose:
         return target_frames, rtn_str
     return target_frames
